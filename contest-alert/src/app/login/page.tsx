@@ -15,9 +15,11 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useTheme } from "@/components/shared/ThemeProvider";
 
+import { Suspense } from "react";
+
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
 
-export default function LoginPage() {
+function LoginContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -179,5 +181,13 @@ export default function LoginPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
