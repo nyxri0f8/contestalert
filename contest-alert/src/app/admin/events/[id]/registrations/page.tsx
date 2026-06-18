@@ -37,7 +37,7 @@ export default function RegistrationsPage() {
         // 2. Get Registrations
         const { data: regs, error: regErr } = await supabase
           .from("registrations")
-          .select(\`
+          .select(`
             id,
             ticket_id,
             team_name,
@@ -51,7 +51,7 @@ export default function RegistrationsPage() {
               department,
               email
             )
-          \`)
+          `)
           .eq("event_id", id)
           .order("registered_at", { ascending: false });
 

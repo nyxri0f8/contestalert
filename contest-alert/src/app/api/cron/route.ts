@@ -105,16 +105,16 @@ export async function GET(request: Request) {
         await resend.emails.send({
           from: "Contest Alert <onboarding@resend.dev>", // Change verified domain in prod
           to: "contestalertrit@gmail.com",
-          subject: \`⚠️ Action Required: \${needsBackupNames.length} Events Need Backup\`,
-          html: \`<p>Hello Admin,</p>
+          subject: `⚠️ Action Required: ${needsBackupNames.length} Events Need Backup`,
+          html: `<p>Hello Admin,</p>
                  <p>The following events are approaching their deadline within 7 days and have not been backed up yet:</p>
                  <ul>
-                   \${needsBackupNames.map(n => \`<li>\${n}</li>\`).join('')}
+                   ${needsBackupNames.map(n => `<li>${n}</li>`).join('')}
                  </ul>
                  <p>Please log in to the admin dashboard to generate and download the XLSX backup.</p>
-                 <br/><p>Contest Alert System</p>\`,
+                 <br/><p>Contest Alert System</p>`,
         });
-        console.log(\`[CRON] Sent backup warning email to admin for \${needsBackupNames.length} events.\`);
+        console.log(`[CRON] Sent backup warning email to admin for ${needsBackupNames.length} events.`);
       } catch (emailErr) {
         console.error("[CRON] Failed to send email via Resend:", emailErr);
       }
