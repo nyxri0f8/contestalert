@@ -90,15 +90,15 @@ export default function RegistrationsPage() {
         reg.team_name || "-",
         new Date(reg.registered_at).toLocaleString(),
         ...dynamicFields
-      ].map(val => \`"\${String(val).replace(/"/g, '""')}"\`).join(",");
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(",");
     });
 
-    const csvContent = [headers.join(","), ...rows].join("\\n");
+    const csvContent = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = \`registrations_\${event.title.replace(/\\s+/g, '_')}.csv\`;
+    a.download = `registrations_${event.title.replace(/\s+/g, '_')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
