@@ -47,6 +47,47 @@ export default function CreateEventPage() {
   const [rules, setRules] = useState("");
   const [eligibility, setEligibility] = useState("");
   const [image, setImage] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      const max_width = 1280;
+      const max_height = 720;
+
+      if (width > max_width || height > max_height) {
+        if (width / height > max_width / max_height) {
+          height = Math.round((height * max_width) / width);
+          width = max_width;
+        } else {
+          width = Math.round((width * max_height) / height);
+          height = max_height;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const webpFile = new File([blob], file.name.split('.')[0] + '.webp', { type: 'image/webp' });
+            setImageFile(webpFile);
+            setImage("ready"); 
+          }
+        }, 'image/webp', 0.85);
+      }
+    };
+  };
   const [date, setDate] = useState("");
 
   // Internal-only fields
@@ -54,8 +95,46 @@ export default function CreateEventPage() {
   const [hostedByName, setHostedByName] = useState("");
   const [department, setDepartment] = useState("CSE");
   const [venue, setVenue] = useState("");
-  const [seats, setSeats] = useState("60");
-  const [fee, setFee] = useState("0");
+    const [fee, setFee] = useState("0");
+  const [paymentLink, setPaymentLink] = useState("");
+  const [paymentQrFile, setPaymentQrFile] = useState<File | null>(null);
+
+  const handlePaymentQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const max_size = 800;
+
+      if (width > max_size || height > max_size) {
+        if (width > height) {
+          height = Math.round((height * max_size) / width);
+          width = max_size;
+        } else {
+          width = Math.round((width * max_size) / height);
+          height = max_size;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const webpFile = new File([blob], file.name.split('.')[0] + '_qr.webp', { type: 'image/webp' });
+            setPaymentQrFile(webpFile);
+          }
+        }, 'image/webp', 0.85);
+      }
+    };
+  };
   const [registrationOpen, setRegistrationOpen] = useState("");
   const [registrationClose, setRegistrationClose] = useState("");
 
@@ -71,6 +150,24 @@ export default function CreateEventPage() {
 
   // External-only fields
   const [externalLink, setExternalLink] = useState("");
+  const [formSchema, setFormSchema] = useState<{ id: string; label: string; type: "text" | "number" | "select"; options: string; required: boolean }[]>([]);
+
+  const addField = () => {
+    setFormSchema([...formSchema, { id: Date.now().toString(), label: "", type: "text", options: "", required: false }]);
+  };
+
+  const updateField = (index: number, key: string, value: any) => {
+    const updated = [...formSchema];
+    updated[index] = { ...updated[index], [key]: value };
+    setFormSchema(updated);
+  };
+
+  const removeField = (index: number) => {
+    const updated = [...formSchema];
+    updated.splice(index, 1);
+    setFormSchema(updated);
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,12 +178,42 @@ export default function CreateEventPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      let cover_image_path = null;
+      if (imageFile) {
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.webp`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('event-covers')
+          .upload(fileName, imageFile, { contentType: 'image/webp' });
+
+        if (uploadError) {
+          alert("Image upload failed: " + uploadError.message);
+          throw uploadError;
+        }
+        cover_image_path = uploadData.path;
+      }
+
+      
+      let payment_qr_path = null;
+      if (paymentQrFile) {
+        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}_qr.webp`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('payment-qrs')
+          .upload(fileName, paymentQrFile, { contentType: 'image/webp' });
+
+        if (uploadError) {
+          alert("QR Code upload failed: " + uploadError.message);
+          throw uploadError;
+        }
+        payment_qr_path = uploadData.path;
+      }
+
       const eventData: any = {
         title,
         category,
         event_type: eventType,
         event_date: new Date(date).toISOString(),
-        cover_image: image || `https://picsum.photos/seed/${Math.random()}/800/500`,
+        cover_image_path,
+        cover_image: cover_image_path ? null : (image || `https://picsum.photos/seed/${Math.random()}/800/500`),
         description: desc,
         rules,
         eligibility,
@@ -99,7 +226,9 @@ export default function CreateEventPage() {
         eventData.hosted_by_name = hostedByName || null;
         eventData.department = department === "All" ? null : department;
         eventData.venue = venue;
-        eventData.capacity = parseInt(seats) || 100;
+        eventData.capacity = 9999;
+        eventData.payment_link = paymentLink || null;
+        eventData.payment_qr_path = payment_qr_path || null;
         eventData.fee = parseFloat(fee) || 0;
         eventData.registration_open = registrationOpen ? new Date(registrationOpen).toISOString() : null;
         eventData.registration_close = registrationClose ? new Date(registrationClose).toISOString() : null;
@@ -110,6 +239,10 @@ export default function CreateEventPage() {
         eventData.faculty_coordinator_name = facultyCoordName || null;
         eventData.faculty_coordinator_phone = facultyCoordPhone || null;
         eventData.faculty_coordinator_email = facultyCoordEmail || null;
+        eventData.form_schema = formSchema.map(f => ({
+          ...f,
+          options: f.type === 'select' ? f.options.split(',').map(s => s.trim()).filter(Boolean) : []
+        }));
         // backward compat
         eventData.contact_person = facultyCoordName || null;
         eventData.contact_email = facultyCoordEmail || null;
@@ -359,17 +492,7 @@ export default function CreateEventPage() {
                           className={inputClass}
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className={labelClass}>Seat Capacity</label>
-                        <input
-                          type="number"
-                          required
-                          placeholder="60"
-                          value={seats}
-                          onChange={(e) => setSeats(e.target.value)}
-                          className={inputClass}
-                        />
-                      </div>
+
                       <div className="space-y-1">
                         <label className={labelClass}>Registration Fee (₹)</label>
                         <input
@@ -457,19 +580,107 @@ export default function CreateEventPage() {
                 )}
               </AnimatePresence>
 
+              
+              {/* === REGISTRATION FORM BUILDER (Internal Only) === */}
+              {eventType === "internal" && (
+                <div className="border-t border-[var(--surface-border)] pt-6 pb-2 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-[var(--foreground)]">Registration Form Builder</h4>
+                      <p className="text-[10px] text-[var(--foreground-muted)]">
+                        Add custom fields (e.g., T-Shirt Size, GitHub Profile). <br/>
+                        <strong className="text-[var(--accent)]">For Team Events:</strong> Add fields for "Team Member 2 Name", etc. Only the Team Leader should register.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addField}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--surface-subtle)] border border-[var(--surface-border)] text-xs font-semibold hover:bg-[var(--surface-border)] transition-colors"
+                    >
+                      + Add Field
+                    </button>
+                  </div>
+                  
+                  {formSchema.length > 0 && (
+                    <div className="space-y-3">
+                      {formSchema.map((field, idx) => (
+                        <div key={field.id} className="p-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] grid grid-cols-12 gap-3 items-start relative group">
+                          <div className="col-span-12 sm:col-span-5 space-y-1">
+                            <label className={labelClass}>Field Label</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. GitHub URL"
+                              value={field.label}
+                              onChange={(e) => updateField(idx, 'label', e.target.value)}
+                              className={inputClass}
+                            />
+                          </div>
+                          <div className="col-span-6 sm:col-span-3 space-y-1">
+                            <label className={labelClass}>Type</label>
+                            <select
+                              value={field.type}
+                              onChange={(e) => updateField(idx, 'type', e.target.value)}
+                              className={inputClass}
+                            >
+                              <option value="text">Text / URL</option>
+                              <option value="number">Number</option>
+                              <option value="select">Dropdown</option>
+                            </select>
+                          </div>
+                          <div className="col-span-4 sm:col-span-2 space-y-1">
+                            <label className={labelClass}>Required</label>
+                            <div className="flex items-center h-10">
+                              <input
+                                type="checkbox"
+                                checked={field.required}
+                                onChange={(e) => updateField(idx, 'required', e.target.checked)}
+                                className="w-4 h-4 rounded border-[var(--surface-border)] bg-transparent text-[var(--accent)] focus:ring-[var(--accent)]"
+                              />
+                            </div>
+                          </div>
+                          <div className="col-span-2 sm:col-span-2 flex justify-end items-center h-full pt-5">
+                            <button
+                              type="button"
+                              onClick={() => removeField(idx)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                            >
+                              ×
+                            </button>
+                          </div>
+                          {field.type === 'select' && (
+                            <div className="col-span-12 space-y-1 mt-1">
+                              <label className={labelClass}>Options (Comma separated)</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="e.g. Small, Medium, Large"
+                                value={field.options}
+                                onChange={(e) => updateField(idx, 'options', e.target.value)}
+                                className={inputClass}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* === COMMON: Cover Image === */}
               <div className="space-y-1">
-                <label className={labelClass}>Cover Image URL</label>
+                <label className={labelClass}>Cover Image (Max 1280x720, Auto-converted to WebP)</label>
                 <input
-                  type="url"
-                  placeholder="Leave empty for auto random image"
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
                   className={inputClass}
                 />
+                {imageFile && <p className="text-[10px] text-[var(--accent)] font-semibold mt-1">Image selected & optimized. Ready for upload.</p>}
               </div>
 
-              {/* === COMMON: Description === */}
+              {/* === COMMON: Description === */}{/* === COMMON: Description === */}
               <div className="space-y-1">
                 <label className={labelClass}>Description</label>
                 <textarea

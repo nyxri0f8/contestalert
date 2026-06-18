@@ -31,6 +31,7 @@ import {
 import Link from "next/link";
 import { useTheme } from "@/components/shared/ThemeProvider";
 import { createClient } from "@/lib/supabase/client";
+import { getEventImageUrls } from "@/lib/supabase/storage";
 
 // ============================================================
 // ANIMATION VARIANTS (custom cubic-bezier — zero linear)
@@ -82,39 +83,6 @@ const DEADLINE_TEXT: Record<string, string> = {
   critical: "Last Day",
 };
 
-// Animated counter hook
-function useAnimatedCounter(end: number, duration = 2000) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLDivElement>(null);
-  const hasAnimated = useRef(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated.current) {
-          hasAnimated.current = true;
-          const start = 0;
-          const startTime = Date.now();
-          const tick = () => {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            // ease-out expo
-            const eased = 1 - Math.pow(1 - progress, 3);
-            setCount(Math.floor(start + (end - start) * eased));
-            if (progress < 1) requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        }
-      },
-      { threshold: 0.3 }
-    );
-    if (ref.current) observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [end, duration]);
-
-  return { count, ref };
-}
-
 // ============================================================
 // NAVBAR — Floating Glass Pill
 // ============================================================
@@ -122,6 +90,7 @@ function useAnimatedCounter(end: number, duration = 2000) {
 function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [bannerText, setBannerText] = useState("Loading upcoming events...");
   const { resolvedTheme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -130,13 +99,38 @@ function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    async function loadNearestEvent() {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("events")
+          .select("title, deadline")
+          .eq("status", "active")
+          .gte("deadline", new Date().toISOString())
+          .order("deadline", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        
+        if (data) {
+          const deadlineDate = new Date(data.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          setBannerText(`Upcoming Event: ${data.title} — Registration closes on ${deadlineDate}`);
+        } else {
+          setBannerText("No upcoming events at the moment. Stay tuned!");
+        }
+      } catch (err) {
+        setBannerText("Welcome to Contest Alert!");
+      }
+    }
+    loadNearestEvent();
+  }, []);
+
   return (
     <>
-      {/* Top Announcements Banner */}
       <div className="fixed top-0 left-0 right-0 h-9 bg-[var(--charcoal)] text-white text-xs flex items-center justify-center gap-3 z-50 px-4">
         <span className="bg-[var(--accent)] text-black text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0">Circular</span>
         <div className="truncate font-medium">
-          Smart India Hackathon 2026 internal submission deadline extended. Contact department coordinators for abstract reviews.
+          {bannerText}
         </div>
       </div>
 
@@ -152,12 +146,12 @@ function Navbar() {
         style={{ width: "min(92vw, 880px)" }}
       >
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5 pl-1">
+        <Link href="/" className="flex items-center gap-2 sm:gap-2.5 pl-1">
           <div className="bg-white dark:bg-white/95 px-2 py-1 rounded-lg border border-neutral-100 shadow-sm flex items-center justify-center shrink-0">
             <img src="/images/logo.png" alt="RIT Logo" className="h-6 w-auto object-contain" />
           </div>
-          <span className="text-[var(--surface-border)] font-normal">|</span>
-          <span className="font-display font-extrabold text-[13px] tracking-tight block leading-none text-[var(--foreground)]">Contest Alert</span>
+          <span className="hidden sm:block text-[var(--surface-border)] font-normal">|</span>
+          <span className="hidden sm:block font-display font-extrabold text-[13px] tracking-tight leading-none text-[var(--foreground)]">Contest Alert</span>
         </Link>
 
         <div className="flex-1" />
@@ -187,10 +181,11 @@ function Navbar() {
         {/* CTA Button */}
         <Link
           href="/login"
-          className="group relative flex items-center gap-2 pl-4 pr-2 py-1.5 rounded-full bg-[var(--cta)] text-white text-[13px] font-semibold transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:shadow-[var(--shadow-cta-glow)] active:scale-[0.97]"
+          className="group relative flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-1.5 sm:pr-2 py-1.5 rounded-full bg-[var(--cta)] text-white text-xs sm:text-[13px] font-semibold transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:shadow-[var(--shadow-cta-glow)] active:scale-[0.97]"
         >
-          <span>Student Login</span>
-          <span className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center group-hover:translate-x-0.5 group-hover:-translate-y-[1px] group-hover:scale-105 transition-transform duration-300">
+          <span className="hidden sm:inline whitespace-nowrap">Student Login</span>
+          <span className="sm:hidden whitespace-nowrap">Login</span>
+          <span className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 rounded-full bg-white/15 flex items-center justify-center group-hover:translate-x-0.5 group-hover:-translate-y-[1px] group-hover:scale-105 transition-transform duration-300">
             <ArrowRight weight="light" className="w-3 h-3" />
           </span>
         </Link>
@@ -309,17 +304,16 @@ function HeroSection() {
             <motion.div variants={fadeUp} className="space-y-7">
               <span className="eyebrow border border-[var(--accent)]/20 text-[var(--accent-text)] bg-[var(--accent-muted)]/75 backdrop-blur-md">
                 <span className="status-dot status-dot--teal animate-pulse" />
-                Rajalakshmi Institute of Technology
+                <GraduationCap weight="fill" className="w-4 h-4 inline-block mr-1 -mt-0.5" /> RAJALAKSHMI INSTITUTE OF TECHNOLOGY — RIT CHENNAI
               </span>
 
               <h1 className="!leading-[1.02]">
-                <span className="block text-[var(--foreground)]">Academic Event &</span>
-                <span className="gradient-text-animated">Co-Curricular Hub</span>
+                <span className="block text-[var(--foreground)]">Your Campus, Your Contests.</span>
+                <span className="gradient-text-animated">All in One Place.</span>
               </h1>
 
               <p className="text-base sm:text-lg text-[var(--foreground-secondary)] max-w-[55ch] leading-relaxed">
-                Centralized platform facilitating national hackathons, technical symposia, HOD seminars,
-                and branch workshops. Link your competitive successes with official academic standings.
+                Find hackathons, symposia, and workshops across all 7 departments. Register, track your points, and help your branch top the leaderboard.
               </p>
             </motion.div>
 
@@ -329,7 +323,7 @@ function HeroSection() {
                 href="/login"
                 className="group relative inline-flex items-center gap-3 pl-8 pr-2.5 py-2.5 rounded-full bg-[var(--cta)] text-white font-semibold text-[15px] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:shadow-[0_0_40px_rgba(255,87,34,0.25)] hover:scale-[1.02] active:scale-[0.97]"
               >
-                <span>Access Student Portal</span>
+                <span>Browse Events</span>
                 <span className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center group-hover:translate-x-0.5 group-hover:-translate-y-[1px] group-hover:scale-110 transition-all duration-300">
                   <ArrowRight weight="light" className="w-4 h-4" />
                 </span>
@@ -341,27 +335,10 @@ function HeroSection() {
                 className="inline-flex items-center gap-2.5 px-7 py-3 rounded-full border border-[var(--surface-border)] bg-white/40 dark:bg-white/5 backdrop-blur-md text-sm font-medium text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:border-[var(--accent)] hover:bg-[var(--accent-muted)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Trophy weight="light" className="w-4 h-4 text-[var(--accent)]" />
-                Branch Standings
+                See Rankings
               </a>
             </motion.div>
 
-            {/* Program Stats */}
-            <motion.div variants={fadeUp} className="flex flex-wrap gap-10 pt-4">
-              {[
-                { label: "B.E/B.Tech Students", value: "5,200+" },
-                { label: "Accredited Programs", value: "7 Branches" },
-                { label: "Active Co-curriculars", value: "142 Yearly" },
-              ].map((stat) => (
-                <div key={stat.label}>
-                  <div className="text-2xl font-display font-bold tracking-tight text-[var(--foreground)]" style={{ fontFamily: "var(--font-mono)" }}>
-                    {stat.value}
-                  </div>
-                  <div className="text-[10px] text-[var(--foreground-muted)] uppercase tracking-wider font-semibold mt-1.5">
-                    {stat.label}
-                  </div>
-                </div>
-              ))}
-            </motion.div>
           </div>
 
           {/* Right Column: Notice Board — Double-Bezel Glass */}
@@ -379,7 +356,7 @@ function HeroSection() {
                 <div className="flex items-center justify-between border-b border-[var(--surface-border)] pb-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground-secondary)] flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-[var(--cta)] animate-pulse" />
-                    Notice Board & Circulars
+                    <Bell weight="fill" className="w-4 h-4 inline-block mr-1 text-[var(--accent)]" /> Live Notices
                   </h3>
                   <span className="text-[10px] font-mono text-[var(--foreground-muted)]">Official Feed</span>
                 </div>
@@ -401,14 +378,14 @@ function HeroSection() {
                     ))
                   ) : (
                     <div className="text-xs text-[var(--foreground-muted)] text-center py-8">
-                      No active announcements at this time.
+                      No new events right now — check back soon or follow your department group!
                     </div>
                   )}
                 </div>
 
                 <div className="pt-3">
                   <Link href="/login" className="group w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[var(--accent-muted)] border border-[var(--surface-border)] hover:bg-[var(--accent-muted-strong)] hover:border-[var(--accent)]/30 text-xs font-semibold text-[var(--foreground-secondary)] hover:text-[var(--accent-text)] transition-all duration-300">
-                    Access Academic Calendar
+                    View All Events
                     <ArrowUpRight weight="light" className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300" />
                   </Link>
                 </div>
@@ -418,93 +395,6 @@ function HeroSection() {
         </motion.div>
       </div>
     </section>
-  );
-}
-
-// ============================================================
-// STATS BAR — Glass Bento Cards with Animated Counters
-// ============================================================
-
-function StatsBar() {
-  const [stats, setStats] = useState([
-    { label: "Co-curricular Events", rawValue: 0, icon: CalendarCheck, color: "var(--accent)" },
-    { label: "Student Enrollments", rawValue: 0, icon: Users, color: "var(--accent)" },
-    { label: "Total Branch Points", rawValue: 0, icon: Trophy, color: "var(--cta)" },
-    { label: "Accredited Programs", rawValue: 7, icon: GraduationCap, color: "var(--cta)" },
-  ]);
-
-  useEffect(() => {
-    async function loadStats() {
-      try {
-        const supabase = createClient();
-        const { count: activeCount } = await supabase
-          .from("events")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "active");
-
-        const { count: studentsCount } = await supabase
-          .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("role", "student");
-
-        const { data: profilesData } = await supabase
-          .from("profiles")
-          .select("achievement_points");
-
-        const totalPoints = profilesData?.reduce((sum, p) => sum + (p.achievement_points || 0), 0) || 0;
-
-        setStats([
-          { label: "Co-curricular Events", rawValue: activeCount || 0, icon: CalendarCheck, color: "var(--accent)" },
-          { label: "Student Enrollments", rawValue: studentsCount || 0, icon: Users, color: "var(--accent)" },
-          { label: "Total Branch Points", rawValue: totalPoints, icon: Trophy, color: "var(--cta)" },
-          { label: "Accredited Programs", rawValue: 7, icon: GraduationCap, color: "var(--cta)" },
-        ]);
-      } catch (err) {
-        console.error("Failed to load homepage stats:", err);
-      }
-    }
-    loadStats();
-  }, []);
-
-  return (
-    <section className="relative py-10 bg-transparent">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          variants={staggerContainer}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-80px" }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5"
-        >
-          {stats.map((stat) => (
-            <StatCard key={stat.label} stat={stat} />
-          ))}
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-function StatCard({ stat }: { stat: { label: string; rawValue: number; icon: any; color: string } }) {
-  const { count, ref } = useAnimatedCounter(stat.rawValue);
-
-  return (
-    <motion.div ref={ref} variants={scaleIn} className="stat-card group">
-      <div className="flex items-center gap-4">
-        <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:scale-110 group-hover:rotate-3"
-          style={{ background: `color-mix(in srgb, ${stat.color} 12%, transparent)` }}
-        >
-          <stat.icon weight="light" className="w-5 h-5" style={{ color: stat.color }} />
-        </div>
-        <div>
-          <div className="text-2xl font-display font-bold tracking-tight" style={{ fontFamily: "var(--font-mono)" }}>
-            {stat.rawValue > 100 ? count.toLocaleString() : count || stat.rawValue}
-          </div>
-          <div className="text-[11px] text-[var(--foreground-muted)] font-medium">{stat.label}</div>
-        </div>
-      </div>
-    </motion.div>
   );
 }
 
@@ -527,7 +417,8 @@ function EventsSection() {
           .limit(4);
 
         if (dbEvents) {
-          setEvents(dbEvents.map(e => {
+          const eventsWithImages = await getEventImageUrls(dbEvents);
+          setEvents(eventsWithImages.map(e => {
             const registeredCount = e.registrations?.[0]?.count || 0;
             const remainingSeats = Math.max(0, e.capacity - registeredCount);
             
@@ -570,13 +461,10 @@ function EventsSection() {
           {/* Header */}
           <motion.div variants={fadeUp} className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div className="space-y-3">
-              <span className="eyebrow">
-                <Sparkle weight="light" className="w-3 h-3 text-[var(--accent)]" />
-                Branch Circulars & Events
-              </span>
-              <h2>Upcoming Co-curricular Events</h2>
+              
+              <h2>What's Happening on Campus</h2>
               <p className="text-[var(--foreground-secondary)]">
-                National symposia, branch seminars, and student hackathons hosted across departments.
+                Official circulars, open registrations, and deadlines — updated by your department coordinators.
               </p>
             </div>
             <Link
@@ -615,7 +503,7 @@ function EventsSection() {
                         </span>
                         {event.eventType === "external" && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-[var(--cta)]/80 backdrop-blur-xl text-white text-[10px] font-bold border border-white/15">
-                            ↗ External
+                            <ArrowUpRight weight="bold" className="w-3 h-3" /> External
                           </span>
                         )}
                       </div>
@@ -735,9 +623,9 @@ function StudentSpotlight() {
               <Sparkle weight="light" className="w-3 h-3 text-[var(--accent)]" />
               Student Co-Curricular Spotlight
             </span>
-            <h2>Celebrating Branch Excellence</h2>
+            <h2>Students Who Crushed It</h2>
             <p className="text-[var(--foreground-secondary)] mx-auto text-sm sm:text-base">
-              Spotlighting student teams representing Rajalakshmi Institute of Technology in national and international arenas.
+              Shoutout to RIT students who brought home wins from national competitions this semester.
             </p>
           </motion.div>
 
@@ -767,7 +655,7 @@ function StudentSpotlight() {
               ))
             ) : (
               <div className="col-span-3 text-center py-12 text-xs text-[var(--foreground-muted)]">
-                No podium finishes recorded yet for this semester.
+                No wins logged yet this semester — go win something! <Trophy className="inline-block w-4 h-4 text-[var(--accent)] ml-1" />
               </div>
             )}
           </motion.div>
@@ -778,50 +666,43 @@ function StudentSpotlight() {
 }
 
 // ============================================================
-// DEPARTMENT LEADERBOARD — Premium Table with Rank Badges
+// STUDENT LEADERBOARD — Premium Table with Rank Badges
 // ============================================================
 
-function LeaderboardSection() {
+function StudentLeaderboardSection() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
 
   useEffect(() => {
-    async function loadLeaderboard() {
+    async function fetchStudentLeaderboard() {
       try {
         const supabase = createClient();
-        const { data: leaderboardData } = await supabase.rpc('get_department_leaderboard');
-        
-        if (leaderboardData) {
-          const deptNames: Record<string, string> = {
-            CSE: "Computer Science & Engineering",
-            ECE: "Electronics & Communication",
-            AIML: "AI & Machine Learning",
-            AIDS: "AI & Data Science",
-            CCE: "Computer & Communication",
-            Biotechnology: "Biotechnology",
-            Mechanical: "Mechanical Engineering"
-          };
+        const { data } = await supabase
+          .from('profiles')
+          .select('name, department, achievement_points')
+          .eq('role', 'student')
+          .order('achievement_points', { ascending: false })
+          .limit(5);
 
-          const maxPoints = Math.max(...leaderboardData.map((d: any) => d.total_points || 1));
-
-          setLeaderboard(leaderboardData.map((d: any, idx: number) => ({
-            rank: idx + 1,
-            department: d.department,
-            full: deptNames[d.department] || d.department,
-            points: d.total_points || 0,
-            registrations: d.total_registrations || 0,
-            percentage: Math.round(((d.total_points || 0) / maxPoints) * 100),
-            badge: idx === 0 ? "Event Leaders" : idx === 1 ? "Innovation Hub" : idx === 2 ? "Rising Star" : null
+        if (data && data.length > 0) {
+          const maxPoints = data[0].achievement_points || 1;
+          setLeaderboard(data.map((p, i) => ({
+            rank: i + 1,
+            name: p.name || 'Unknown',
+            branch: p.department || 'N/A',
+            events: '-', 
+            points: p.achievement_points || 0,
+            percentage: ((p.achievement_points || 0) / maxPoints) * 100
           })));
         }
       } catch (err) {
-        console.error("Failed to load leaderboard:", err);
+        console.error('Failed to load student leaderboard:', err);
       }
     }
-    loadLeaderboard();
+    fetchStudentLeaderboard();
   }, []);
 
   return (
-    <section id="leaderboard" className="py-[var(--space-section)] bg-transparent border-y border-[var(--surface-border)]">
+    <section id="leaderboard" className="py-[var(--space-section)] bg-transparent border-t border-[var(--surface-border)]">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           variants={staggerContainer}
@@ -834,23 +715,23 @@ function LeaderboardSection() {
           <motion.div variants={fadeUp} className="lg:col-span-5 space-y-7">
             <span className="eyebrow">
               <Trophy weight="light" className="w-3 h-3 text-[var(--accent)]" />
-              Branch Leaderboard Index
+              Live Rankings
             </span>
             <h2 className="!leading-[1.1]">
-              Annual Branch
+              Student
               <br />
-              <span className="gradient-text">Engagement Score</span>
+              <span className="gradient-text">Leaderboard</span>
             </h2>
             <p className="text-[var(--foreground-secondary)] leading-relaxed">
-              Every student event registration, official check-in, and podium finish earns points for their respective engineering branch. Compare performance rankings dynamically.
+              Updated in real-time. Every event, every point, every student — tracked here.
             </p>
 
             <div className="space-y-2.5 pt-3 border-t border-[var(--surface-border)]">
               {[
-                { label: "National Event Registration", points: "+10 pts", color: "var(--accent)" },
-                { label: "Seminars & Attendance Verify", points: "+20 pts", color: "var(--accent)" },
-                { label: "1st Place Contest Winner", points: "+50 pts", color: "var(--cta)" },
-                { label: "Contest Runner-Up Finish", points: "+30 pts", color: "var(--cta)" },
+                { label: "Registered for any event", points: "+10 pts", color: "var(--accent)" },
+                { label: "Attended & checked in", points: "+20 pts", color: "var(--accent)" },
+                { label: "Won a national contest", points: "+50 pts", color: "var(--cta)" },
+                { label: "Runner-up finish", points: "+30 pts", color: "var(--cta)" },
               ].map((rule) => (
                 <div key={rule.label} className="flex items-center justify-between py-2.5 border-b border-[var(--surface-border)] last:border-0">
                   <span className="text-xs text-[var(--foreground-secondary)]">{rule.label}</span>
@@ -867,15 +748,16 @@ function LeaderboardSection() {
                 {/* Header */}
                 <div className="grid grid-cols-12 gap-2 px-6 py-4 text-[10px] uppercase tracking-widest text-[var(--foreground-muted)] font-bold border-b border-[var(--surface-border)]">
                   <div className="col-span-1">Rank</div>
-                  <div className="col-span-5">Engineering Branch</div>
-                  <div className="col-span-3 text-right">Total Index</div>
-                  <div className="col-span-3 text-right">Registrations</div>
+                  <div className="col-span-5">Student Name</div>
+                  <div className="col-span-2">Branch</div>
+                  <div className="col-span-2 text-right">Events</div>
+                  <div className="col-span-2 text-right">Points</div>
                 </div>
 
                 {/* Rows */}
-                {leaderboard.map((dept, i) => (
+                {leaderboard.map((student, i) => (
                   <motion.div
-                    key={dept.department}
+                    key={student.name}
                     initial={{ opacity: 0, x: -12 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     viewport={{ once: true }}
@@ -897,24 +779,119 @@ function LeaderboardSection() {
                     </div>
                     <div className="col-span-5 flex items-center gap-2.5 min-w-0">
                       <div className="min-w-0 flex-1">
+                        <span className="font-semibold text-sm block truncate">{student.name}</span>
+                        {/* Progress bar */}
+                        <div className="progress-bar mt-1.5 hidden sm:block">
+                          <div className="progress-bar-fill" style={{ width: `${student.percentage}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-span-2 text-[11px] text-[var(--foreground-muted)] font-semibold">
+                      {student.branch}
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span className="font-mono text-sm text-[var(--foreground-secondary)]">{student.events}</span>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span className="font-mono font-bold text-sm">{student.points}</span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ============================================================
+// DEPARTMENT LEADERBOARD — Premium Table
+// ============================================================
+
+function DepartmentLeaderboardSection() {
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function fetchDeptLeaderboard() {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.rpc('get_department_leaderboard');
+        if (data && data.length > 0) {
+          const maxPoints = Math.max(...data.map((d: any) => parseInt(d.total_points) || 0), 1);
+          setLeaderboard(data.slice(0, 5).map((d: any, i: number) => ({
+            rank: i + 1,
+            department: d.department,
+            points: parseInt(d.total_points) || 0,
+            participants: parseInt(d.total_registrations) || 0,
+            wins: parseInt(d.total_wins) || 0,
+            percentage: ((parseInt(d.total_points) || 0) / maxPoints) * 100
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to load department leaderboard:', err);
+      }
+    }
+    fetchDeptLeaderboard();
+  }, []);
+
+  return (
+    <section className="py-[var(--space-section)] bg-transparent border-b border-[var(--surface-border)]">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div
+          variants={staggerContainer}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-80px" }}
+          className="space-y-10"
+        >
+          <motion.div variants={fadeUp} className="text-center space-y-3">
+            <h2 className="!leading-[1.1]">Department Leaderboard</h2>
+          </motion.div>
+
+          <motion.div variants={fadeUp} className="max-w-4xl mx-auto">
+            <div className="card-bezel-elevated glass-premium">
+              <div className="card-bezel-inner bg-transparent shadow-none">
+                {/* Header */}
+                <div className="grid grid-cols-12 gap-2 px-6 py-4 text-[10px] uppercase tracking-widest text-[var(--foreground-muted)] font-bold border-b border-[var(--surface-border)]">
+                  <div className="col-span-2">Rank</div>
+                  <div className="col-span-4">Department</div>
+                  <div className="col-span-2 text-right">Total Points</div>
+                  <div className="col-span-2 text-right">Participants</div>
+                  <div className="col-span-2 text-right">Wins</div>
+                </div>
+
+                {/* Rows */}
+                {leaderboard.map((dept, i) => (
+                  <motion.div
+                    key={dept.department}
+                    initial={{ opacity: 0, x: -12 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: i * 0.06, duration: 0.5, ease: EASE_OUT_EXPO }}
+                    className={`grid grid-cols-12 gap-2 px-6 py-4 items-center border-b border-[var(--surface-border)] last:border-0 transition-colors duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--accent-muted)]`}
+                  >
+                    <div className="col-span-2">
+                      <span className="font-mono font-bold text-xs text-[var(--foreground-muted)] pl-2">{i + 1}</span>
+                    </div>
+                    <div className="col-span-4 flex items-center gap-2.5 min-w-0">
+                      <div className="min-w-0 flex-1">
                         <span className="font-semibold text-sm block truncate">{dept.department}</span>
-                        <span className="text-[10px] text-[var(--foreground-muted)] hidden sm:block truncate">{dept.full}</span>
                         {/* Progress bar */}
                         <div className="progress-bar mt-1.5 hidden sm:block">
                           <div className="progress-bar-fill" style={{ width: `${dept.percentage}%` }} />
                         </div>
                       </div>
-                      {dept.badge && (
-                        <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full bg-[var(--cta-muted)] text-[var(--cta)] text-[9px] font-bold uppercase tracking-wider shrink-0">
-                          {dept.badge}
-                        </span>
-                      )}
                     </div>
-                    <div className="col-span-3 text-right">
+                    <div className="col-span-2 text-right">
                       <span className="font-mono font-bold text-sm">{dept.points.toLocaleString()}</span>
                     </div>
-                    <div className="col-span-3 text-right">
-                      <span className="font-mono text-sm text-[var(--foreground-secondary)]">{dept.registrations}</span>
+                    <div className="col-span-2 text-right">
+                      <span className="font-mono text-sm text-[var(--foreground-secondary)]">{dept.participants}</span>
+                    </div>
+                    <div className="col-span-2 text-right">
+                      <span className="font-mono text-sm text-[var(--foreground-secondary)]">{dept.wins}</span>
                     </div>
                   </motion.div>
                 ))}
@@ -933,14 +910,14 @@ function LeaderboardSection() {
 
 function HowItWorks() {
   const steps = [
-    { icon: GraduationCap, title: "Authenticate with RIT ID", description: "Use your official college Microsoft/Google SSO. Complete profile registration with roll number." },
-    { icon: MagnifyingGlass, title: "Browse Official Circulars", description: "Discover technical hackathons and co-curricular programs hosted by all 7 departments." },
-    { icon: Ticket, title: "Verify Digital Entry Pass", description: "Receive a custom QR-coded entry ticket instantly. Show it at the venue gates for attendance logging." },
-    { icon: ChartLineUp, title: "Earn Department Points", description: "Log check-ins to gain points for your engineering branch. Collect achievement awards." },
+    { icon: GraduationCap, title: "Log In with RIT ID", description: "Use your college Google or Microsoft login — no new password needed." },
+    { icon: MagnifyingGlass, title: "Browse Events", description: "See all open hackathons, symposia, and workshops from all 7 departments in one feed." },
+    { icon: Ticket, title: "Grab Your QR Pass", description: "Get a digital entry pass instantly. Flash it at the venue — no printing needed." },
+    { icon: ChartLineUp, title: "Earn Branch Points", description: "Every check-in and podium finish adds points to your department's score." },
   ];
 
   return (
-    <section id="about" className="py-[var(--space-section)] bg-transparent">
+    <section className="py-[var(--space-section)] bg-transparent">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           variants={staggerContainer}
@@ -950,9 +927,9 @@ function HowItWorks() {
           className="space-y-14"
         >
           <motion.div variants={fadeUp} className="text-center space-y-4 max-w-2xl mx-auto">
-            <span className="eyebrow">Co-curricular Protocol</span>
-            <h2>Student Registration Flow</h2>
-            <p className="text-[var(--foreground-secondary)] mx-auto">Four official steps to access, register, and log campus events.</p>
+            <span className="eyebrow"><Lightning weight="fill" className="w-4 h-4 inline-block mr-1 text-[var(--accent)]" /> Quick Start</span>
+            <h2>From Sign-Up to Scoreboard in 4 Steps</h2>
+            <p className="text-[var(--foreground-secondary)] mx-auto">Takes less than 2 minutes to get your first event pass.</p>
           </motion.div>
 
           <motion.div variants={staggerContainer} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -981,12 +958,12 @@ function HowItWorks() {
 }
 
 // ============================================================
-// CTA SECTION — Cinematic Glass
+// ABOUT SECTION — Clean 3-Column Layout
 // ============================================================
 
-function CTASection() {
+function AboutSection() {
   return (
-    <section className="py-[var(--space-section)] border-t border-[var(--surface-border)] bg-transparent">
+    <section id="about" className="py-[var(--space-section)] border-t border-[var(--surface-border)] bg-transparent">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 28, filter: "blur(8px)" }}
@@ -995,7 +972,7 @@ function CTASection() {
           transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
           className="card-bezel-elevated glass-premium"
         >
-          <div className="card-bezel-inner relative overflow-hidden bg-transparent shadow-none">
+          <div className="card-bezel-inner relative overflow-hidden bg-transparent shadow-none px-8 py-20 sm:px-16 text-center">
             {/* Ambient gradients */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
               <div className="absolute top-0 right-0 w-[60%] h-full bg-gradient-to-l from-[var(--accent)]/10 to-transparent" />
@@ -1003,28 +980,32 @@ function CTASection() {
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full bg-[var(--accent)]/5 blur-[80px]" />
             </div>
 
-            <div className="relative px-8 py-24 sm:px-16 text-center space-y-8">
-              <span className="eyebrow">
-                <Bell weight="light" className="w-3 h-3 text-[var(--accent)]" />
-                RIT Co-Curricular Platform
-              </span>
-
-              <h2 className="max-w-2xl mx-auto">
-                Ready to Represent
-                <br />
-                <span className="gradient-text">Your Engineering Branch?</span>
+            <div className="relative space-y-16">
+              <h2 className="max-w-2xl mx-auto text-4xl">
+                What is <span className="gradient-text">Contest Alert?</span>
               </h2>
 
-              <p className="text-[var(--foreground-secondary)] max-w-lg mx-auto text-sm sm:text-base">
-                Log in to check live department circulars, retrieve your active digital event passes, and track points for your academic branch standings.
-              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+                <div className="space-y-3">
+                  <h3 className="text-3xl font-display font-bold text-[var(--foreground)] tracking-tight">Discover.</h3>
+                  <p className="text-[var(--foreground-secondary)] text-sm">Find every campus event in one place</p>
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-3xl font-display font-bold text-[var(--foreground)] tracking-tight">Participate.</h3>
+                  <p className="text-[var(--foreground-secondary)] text-sm">Register and get your QR pass instantly</p>
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-3xl font-display font-bold text-[var(--foreground)] tracking-tight">Shine.</h3>
+                  <p className="text-[var(--foreground-secondary)] text-sm">Earn points and climb the leaderboard</p>
+                </div>
+              </div>
 
-              <div className="flex flex-wrap justify-center gap-4 pt-4">
+              <div className="pt-8">
                 <Link
                   href="/login"
                   className="group relative inline-flex items-center gap-3 pl-8 pr-2.5 py-2.5 rounded-full bg-[var(--cta)] text-white font-semibold text-[15px] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:shadow-[0_0_40px_rgba(255,87,34,0.25)] active:scale-[0.97]"
                 >
-                  <span>Access Portal Login</span>
+                  <span>Ready to Rep Your Branch?</span>
                   <span className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center group-hover:translate-x-0.5 group-hover:-translate-y-[1px] group-hover:scale-110 transition-all duration-300">
                     <ArrowRight weight="light" className="w-4 h-4" />
                   </span>
@@ -1056,8 +1037,7 @@ function Footer() {
           </div>
 
           <div className="text-center text-xs text-[var(--foreground-muted)] space-y-1.5">
-            <p>Affiliated with Anna University • Approved by AICTE • NBA & NAAC Accredited Institution</p>
-            <p>Built for Rajalakshmi Institute of Technology Chennai. Managed by Student Affairs Office.</p>
+            <p>Affiliated with Anna University · AICTE Approved · Built for RIT Chennai</p>
           </div>
 
           <div className="flex items-center gap-5 text-sm text-[var(--foreground-muted)]">
@@ -1080,12 +1060,12 @@ export default function LandingPage() {
     <main className="relative">
       <Navbar />
       <HeroSection />
-      <StatsBar />
       <EventsSection />
       <StudentSpotlight />
-      <LeaderboardSection />
+      <StudentLeaderboardSection />
+      <DepartmentLeaderboardSection />
       <HowItWorks />
-      <CTASection />
+      <AboutSection />
       <Footer />
     </main>
   );

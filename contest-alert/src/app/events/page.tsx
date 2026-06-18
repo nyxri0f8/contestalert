@@ -15,6 +15,7 @@ import {
   Buildings,
 } from "@phosphor-icons/react";
 import { createClient } from "@/lib/supabase/client";
+import { getEventImageUrls } from "@/lib/supabase/storage";
 import { EVENT_CATEGORIES, DEPARTMENTS } from "@/types";
 import { Sidebar } from "@/components/shared/Sidebar";
 
@@ -60,8 +61,9 @@ export default function EventsPage() {
           .select("*, registrations(count)");
 
         if (dbEvents) {
+          const eventsWithImages = await getEventImageUrls(dbEvents);
           setEvents(
-            dbEvents.map((e: any) => {
+            eventsWithImages.map((e: any) => {
               const registeredCount = e.registrations?.[0]?.count || 0;
               const remainingSeats = Math.max(0, e.capacity - registeredCount);
 

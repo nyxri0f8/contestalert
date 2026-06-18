@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   CalendarCheck,
@@ -12,6 +12,7 @@ import {
   ClipboardText,
   ChartLineUp,
   Sparkle,
+  Fire,
   ArrowRight,
   IdentificationCard,
 } from "@phosphor-icons/react";
@@ -29,6 +30,8 @@ import {
   Cell,
 } from "recharts";
 import { Sidebar } from "@/components/shared/Sidebar";
+import * as XLSX from "xlsx";
+import { Warning, DownloadSimple } from "@phosphor-icons/react";
 
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
 const fadeUp = {
@@ -42,6 +45,9 @@ export default function AdminDashboardPage() {
   const [deptParticipation, setDeptParticipation] = useState<any[]>([]);
   const [eventRegistrations, setEventRegistrations] = useState<any[]>([]);
   const [recentRegs, setRecentRegs] = useState<any[]>([]);
+  const [heatmapData, setHeatmapData] = useState<any[]>([]);
+  const [eventsNeedingBackup, setEventsNeedingBackup] = useState<any[]>([]);
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
 
   useEffect(() => {
     async function loadAdminData() {
@@ -51,8 +57,7 @@ export default function AdminDashboardPage() {
         // 1. Fetch Stats
         const { count: studentCount } = await supabase
           .from("profiles")
-          .select("id", { count: "exact", head: true })
-          .eq("role", "student");
+          .select("id", { count: "exact", head: true });
 
         const { count: regCount } = await supabase
           .from("registrations")
@@ -71,7 +76,7 @@ export default function AdminDashboardPage() {
           regCount && regCount > 0 ? ((attendanceCount || 0) / regCount * 100).toFixed(1) + "%" : "0%";
 
         setStats([
-          { label: "Total Students", value: (studentCount || 0).toLocaleString(), icon: Users, color: "var(--accent)" },
+          { label: "Total Users", value: (studentCount || 0).toLocaleString(), icon: Users, color: "var(--accent)" },
           { label: "Total Registrations", value: (regCount || 0).toLocaleString(), icon: Ticket, color: "var(--cta)" },
           { label: "Active Events", value: (activeEventCount || 0).toString(), icon: CalendarCheck, color: "var(--accent)" },
           { label: "Avg Attendance %", value: avgAttendance, icon: IdentificationCard, color: "var(--status-warning)" },
@@ -107,6 +112,55 @@ export default function AdminDashboardPage() {
         }));
         setEventRegistrations(parsedEvents);
 
+        // Heatmap Data Generation
+        const { data: allRegs } = await supabase.from("registrations").select(`
+            registered_at,
+            profiles(department),
+            events(category)
+          `);
+
+        if (allRegs) {
+          const categories = ["hackathon", "workshop", "symposium", "placement", "sports", "cultural"];
+          const depts = ["CSE", "ECE", "AIML", "AIDS", "CCE", "Biotechnology", "Mechanical", "VLSI", "CSBS"];
+          const categoryLabels: Record<string, string> = {
+            hackathon: "Hackathons",
+            workshop: "Workshops",
+            symposium: "Symposiums",
+            placement: "Placements",
+            sports: "Sports",
+            cultural: "Culturals",
+          };
+
+          const heatmap = categories.map((cat) => {
+            const row: any = { category: categoryLabels[cat] || cat };
+            depts.forEach((d) => {
+              const count = allRegs.filter((r: any) => {
+                const profile: any = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+                const event: any = Array.isArray(r.events) ? r.events[0] : r.events;
+                return profile?.department === d && event?.category === cat;
+              }).length;
+              const cellKey = d === "Biotechnology" ? "BT" : d === "Mechanical" ? "ME" : d;
+              row[cellKey] = count;
+            });
+            return row;
+          });
+          setHeatmapData(heatmap);
+        }
+
+        // Fetch events needing backup (deadline within 7 days)
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+        
+        const { data: backupEvents } = await supabase
+          .from("events")
+          .select("id, title, deadline")
+          .eq("status", "active")
+          .eq("is_backed_up", false)
+          .lte("deadline", sevenDaysFromNow.toISOString())
+          .gte("deadline", new Date().toISOString());
+        
+        setEventsNeedingBackup(backupEvents || []);
+
         // 4. Fetch Recent Registrations
         const { data: recent } = await supabase
           .from("registrations")
@@ -134,7 +188,120 @@ export default function AdminDashboardPage() {
       }
     }
     loadAdminData();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('admin_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadAdminData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'registrations' }, () => loadAdminData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  const downloadBackup = async () => {
+    if (eventsNeedingBackup.length === 0) return;
+    setDownloadingBackup(true);
+    try {
+      const supabase = createClient();
+      const wb = XLSX.utils.book_new();
+      
+      let totalRegs = 0;
+      let totalAttendance = 0;
+      let deptCounts: Record<string, number> = {};
+
+      for (const event of eventsNeedingBackup) {
+        // Fetch registrations with profiles and attendance
+        const { data: regs } = await supabase
+          .from("registrations")
+          .select(`
+            registered_at, team_name,
+            profiles(name, register_number, department, year, section),
+            attendance(checked_in_at)
+          `)
+          .eq("event_id", event.id);
+
+        if (regs && regs.length > 0) {
+          totalRegs += regs.length;
+          
+          const sheetData = regs.map(r => {
+            const p = (r.profiles as any) || {};
+            const att = r.attendance as any;
+            if (att) totalAttendance++;
+            if (p.department) {
+              deptCounts[p.department] = (deptCounts[p.department] || 0) + 1;
+            }
+
+            return {
+              "Student Name": p.name || "Unknown",
+              "Roll Number": p.register_number || "-",
+              "Department": p.department || "-",
+              "Year": p.year || "-",
+              "Section": p.section || "-",
+              "Team Name": r.team_name || "-",
+              "Registration Date": new Date(r.registered_at).toLocaleString(),
+              "Attended": att ? "Yes" : "No",
+              "Check-in Time": att ? new Date(att.checked_in_at).toLocaleString() : "-"
+            };
+          });
+
+          const ws = XLSX.utils.json_to_sheet(sheetData);
+          // Sheet names must be <= 31 chars
+          XLSX.utils.book_append_sheet(wb, ws, event.title.substring(0, 31));
+        } else {
+          // Empty sheet if no regs
+          const ws = XLSX.utils.json_to_sheet([{ Message: "No registrations yet" }]);
+          XLSX.utils.book_append_sheet(wb, ws, event.title.substring(0, 31));
+        }
+      }
+
+      // Final Sheet: Overall Stats
+      let topDept = "-";
+      let maxCount = 0;
+      Object.entries(deptCounts).forEach(([dept, count]) => {
+        if (count > maxCount) {
+          maxCount = count;
+          topDept = dept;
+        }
+      });
+
+      const statsData = [
+        { Metric: "Total Registrations (These Events)", Value: totalRegs },
+        { Metric: "Average Attendance %", Value: totalRegs > 0 ? ((totalAttendance / totalRegs) * 100).toFixed(1) + "%" : "0%" },
+        { Metric: "Departments Participated", Value: Object.keys(deptCounts).length },
+        { Metric: "Top Department", Value: `${topDept} (${maxCount} regs)` }
+      ];
+      
+      const statsWs = XLSX.utils.json_to_sheet(statsData);
+      XLSX.utils.book_append_sheet(wb, statsWs, "Overall Stats");
+
+      // Download file
+      XLSX.writeFile(wb, `ContestAlert_Backup_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      // Mark as backed up in DB
+      const eventIds = eventsNeedingBackup.map(e => e.id);
+      await supabase.from("events").update({ is_backed_up: true }).in("id", eventIds);
+      
+      // Dismiss banner
+      setEventsNeedingBackup([]);
+      
+    } catch (err) {
+      console.error("Backup failed", err);
+      alert("Failed to generate backup.");
+    } finally {
+      setDownloadingBackup(false);
+    }
+  };
+
+  const getHeatmapColor = (value: number) => {
+    if (value === 0) return "bg-[var(--surface)]";
+    if (value <= 3) return "bg-[var(--accent)]/10 text-[var(--accent)]";
+    if (value <= 6) return "bg-[var(--accent)]/30 text-[var(--accent)]";
+    if (value <= 8) return "bg-[var(--accent)]/60 text-white";
+    return "bg-[var(--accent)] text-black font-bold";
+  };
 
   return (
     <div className="min-h-[100dvh] bg-transparent">
@@ -157,6 +324,29 @@ export default function AdminDashboardPage() {
         </header>
 
         {/* Content */}
+        {eventsNeedingBackup.length > 0 && (
+          <div className="bg-red-500/10 border-b border-red-500/20 px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-[69px] z-10 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
+                <Warning weight="bold" className="w-4 h-4 text-red-500" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-red-500">Action Required: Event Backups Pending</div>
+                <div className="text-[10px] text-red-500/80 font-medium">
+                  {eventsNeedingBackup.length} event(s) have deadlines within 7 days and haven't been backed up.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={downloadBackup}
+              disabled={downloadingBackup}
+              className="shrink-0 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-[var(--shadow-glow)] disabled:opacity-50"
+            >
+              <DownloadSimple weight="bold" className="w-4 h-4" />
+              {downloadingBackup ? "Generating Backup..." : "Download XLSX Backup"}
+            </button>
+          </div>
+        )}
         <div className="px-6 lg:px-8 py-8 space-y-8 max-w-6xl mx-auto">
           {/* Stats Bar */}
           <motion.div
@@ -319,6 +509,48 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* Department Heatmap Matrix */}
+          <motion.div variants={fadeUp} initial="hidden" animate="visible" className="space-y-4">
+            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+              <Fire weight="light" className="text-amber-500 w-4 h-4" /> Category Heatmap (Engagement Index)
+            </h3>
+            <div className="card-bezel overflow-hidden">
+              <div className="card-bezel-inner overflow-x-auto p-6">
+                <div className="min-w-[500px] grid grid-cols-[1.5fr_repeat(9,1fr)] gap-2.5 text-center text-xs">
+                  <div className="font-semibold text-left text-[var(--foreground-secondary)] flex items-center">
+                    Category
+                  </div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">CSE</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">ECE</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">AIML</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">AIDS</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">CCE</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">BT</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">ME</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">VLSI</div>
+                  <div className="font-bold text-[var(--foreground-secondary)]">CSBS</div>
+
+                  {heatmapData.map((row) => (
+                    <React.Fragment key={row.category}>
+                      <div className="font-medium text-left py-2 border-b border-[var(--surface-border)] flex items-center text-[var(--foreground-muted)]">
+                        {row.category}
+                      </div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.CSE)}`}>{row.CSE}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.ECE)}`}>{row.ECE}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.AIML)}`}>{row.AIML}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.AIDS)}`}>{row.AIDS}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.CCE)}`}>{row.CCE}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.BT)}`}>{row.BT}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.ME)}`}>{row.ME}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.VLSI)}`}>{row.VLSI}</div>
+                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.CSBS)}`}>{row.CSBS}</div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
         </div>
       </main>
     </div>

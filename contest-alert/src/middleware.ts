@@ -71,6 +71,7 @@ export async function middleware(request: NextRequest) {
       user &&
       !pathname.startsWith("/onboarding") &&
       !pathname.startsWith("/auth") &&
+      !pathname.startsWith("/tickets") &&
       pathname !== "/"
     ) {
       const role = user.user_metadata?.role || "student";

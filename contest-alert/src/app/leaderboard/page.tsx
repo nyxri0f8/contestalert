@@ -40,7 +40,6 @@ interface DeptStats {
 export default function LeaderboardPage() {
   const [departments, setDepartments] = useState<DeptStats[]>([]);
   const [trends, setTrends] = useState<any[]>([]);
-  const [heatmapData, setHeatmapData] = useState<any[]>([]);
 
   useEffect(() => {
     async function loadLeaderboardData() {
@@ -82,33 +81,6 @@ export default function LeaderboardPage() {
           `);
 
         if (regs) {
-          const categories = ["hackathon", "workshop", "symposium", "placement", "sports", "cultural"];
-          const depts = ["CSE", "ECE", "AIML", "AIDS", "CCE", "Biotechnology", "Mechanical"];
-
-          const categoryLabels: Record<string, string> = {
-            hackathon: "Hackathons",
-            workshop: "Workshops",
-            symposium: "Symposiums",
-            placement: "Placements",
-            sports: "Sports",
-            cultural: "Culturals",
-          };
-
-          const heatmap = categories.map((cat) => {
-            const row: any = { category: categoryLabels[cat] || cat };
-            depts.forEach((d) => {
-              const count = regs.filter((r: any) => {
-                const profile: any = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-                const event: any = Array.isArray(r.events) ? r.events[0] : r.events;
-                return profile?.department === d && event?.category === cat;
-              }).length;
-              const cellKey = d === "Biotechnology" ? "BT" : d === "Mechanical" ? "ME" : d;
-              row[cellKey] = count;
-            });
-            return row;
-          });
-          setHeatmapData(heatmap);
-
           const weeklyMap: Record<string, Record<string, number>> = {
             "Week 1": { CSE: 0, ECE: 0, AIML: 0, AIDS: 0, CCE: 0, BT: 0, ME: 0 },
             "Week 2": { CSE: 0, ECE: 0, AIML: 0, AIDS: 0, CCE: 0, BT: 0, ME: 0 },
@@ -157,15 +129,6 @@ export default function LeaderboardPage() {
   }, []);
 
   const top3 = departments.slice(0, 3);
-
-  // Heatmap block color intensity generator
-  const getHeatmapColor = (value: number) => {
-    if (value === 0) return "bg-[var(--surface)]";
-    if (value <= 3) return "bg-[var(--accent)]/10 text-[var(--accent)]";
-    if (value <= 6) return "bg-[var(--accent)]/30 text-[var(--accent)]";
-    if (value <= 8) return "bg-[var(--accent)]/60 text-white";
-    return "bg-[var(--accent)] text-black font-bold";
-  };
 
   return (
     <div className="min-h-[100dvh] bg-transparent">
@@ -409,44 +372,6 @@ export default function LeaderboardPage() {
             </div>
           </div>
 
-          {/* Department Heatmap Matrix */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold flex items-center gap-1.5">
-              <Fire weight="light" className="text-amber-500 w-4 h-4" /> Category Heatmap (Engagement Index)
-            </h3>
-            <div className="card-bezel overflow-hidden">
-              <div className="card-bezel-inner overflow-x-auto p-6">
-                <div className="min-w-[500px] grid grid-cols-8 gap-2.5 text-center text-xs">
-                  {/* Row headers (Categories) */}
-                  <div className="font-semibold text-left text-[var(--foreground-secondary)] flex items-center">
-                    Category
-                  </div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">CSE</div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">ECE</div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">AIML</div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">AIDS</div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">CCE</div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">BT</div>
-                  <div className="font-bold text-[var(--foreground-secondary)]">ME</div>
-
-                  {heatmapData.map((row) => (
-                    <React.Fragment key={row.category}>
-                      <div className="font-medium text-left py-2 border-b border-[var(--surface-border)] flex items-center text-[var(--foreground-muted)]">
-                        {row.category}
-                      </div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.CSE)}`}>{row.CSE}</div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.ECE)}`}>{row.ECE}</div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.AIML)}`}>{row.AIML}</div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.AIDS)}`}>{row.AIDS}</div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.CCE)}`}>{row.CCE}</div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.BT)}`}>{row.BT}</div>
-                      <div className={`p-2.5 rounded-lg ${getHeatmapColor(row.ME)}`}>{row.ME}</div>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
     </div>

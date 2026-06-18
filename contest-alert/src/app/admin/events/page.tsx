@@ -9,8 +9,10 @@ import {
   Trash,
   Archive,
   MagnifyingGlass,
+  Users,
 } from "@phosphor-icons/react";
 import { createClient } from "@/lib/supabase/client";
+import { getEventImageUrls } from "@/lib/supabase/storage";
 import { Sidebar } from "@/components/shared/Sidebar";
 
 interface EventType {
@@ -38,6 +40,7 @@ export default function AdminEventsPage() {
     try {
       const supabase = createClient();
       const { data, error } = await supabase.from("events").select("*, registrations(count)");
+      const eventsWithImages = data ? await getEventImageUrls(data) : null;
 
       if (data) {
         const parsed: EventType[] = data.map((e: any) => {
@@ -210,6 +213,13 @@ export default function AdminEventsPage() {
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex justify-end gap-1.5">
+                            <Link
+                              href={`/admin/events/${e.id}/registrations`}
+                              className="p-2 border border-[var(--surface-border)] rounded-lg text-[var(--foreground-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]/30 transition-colors"
+                              title="View Registrations"
+                            >
+                              <Users weight="light" className="w-3.5 h-3.5" />
+                            </Link>
                             <Link
                               href={`/admin/events/${e.id}`}
                               className="p-2 border border-[var(--surface-border)] rounded-lg text-[var(--foreground-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]/30 transition-colors"

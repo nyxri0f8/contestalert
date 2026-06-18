@@ -26,7 +26,9 @@ export type Department =
   | 'AIML'
   | 'CCE'
   | 'Biotechnology'
-  | 'Mechanical';
+  | 'Mechanical'
+  | 'CSBS'
+  | 'VLSI';
 
 export type WinnerPosition = 'winner' | 'runner_up' | 'special_mention';
 
@@ -215,6 +217,8 @@ export const DEPARTMENTS: { value: Department; label: string; full: string }[] =
   { value: 'CCE', label: 'CCE', full: 'Computer and Communication Engineering' },
   { value: 'Biotechnology', label: 'BT', full: 'Biotechnology' },
   { value: 'Mechanical', label: 'ME', full: 'Mechanical Engineering' },
+  { value: 'CSBS', label: 'CSBS', full: 'Computer Science and Business Systems' },
+  { value: 'VLSI', label: 'VLSI', full: 'VLSI Design' },
 ];
 
 export const EVENT_CATEGORIES: { value: EventCategory; label: string }[] = [

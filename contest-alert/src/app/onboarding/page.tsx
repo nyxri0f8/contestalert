@@ -47,6 +47,40 @@ export default function OnboardingPage() {
 
   function updateField(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    setError(null); // Clear error on change
+  }
+
+  function handleNext() {
+    if (step === 1) {
+      if (!formData.name || !formData.register_number || !formData.phone || !formData.secondary_email) {
+        setError("All fields are required.");
+        return;
+      }
+      const regNum = formData.register_number.trim();
+      if (!/^\d+$/.test(regNum)) {
+        setError("Register Number must contain only numbers.");
+        return;
+      }
+      const phoneNum = formData.phone.trim();
+      if (!/^\d{10}$/.test(phoneNum)) {
+        setError("Phone Number must be exactly 10 digits.");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(formData.secondary_email)) {
+        setError("Please enter a valid secondary email address (e.g., name@gmail.com).");
+        return;
+      }
+    }
+    
+    if (step === 2) {
+      if (!formData.department || !formData.year || !formData.section) {
+        setError("All fields (Department, Year, Section) are required.");
+        return;
+      }
+    }
+
+    setError(null);
+    setStep(step + 1);
   }
 
   async function handleSubmit() {
@@ -65,9 +99,9 @@ export default function OnboardingPage() {
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
-        name: formData.name,
-        register_number: formData.register_number,
-        phone: formData.phone,
+        name: formData.name.trim(),
+        register_number: formData.register_number.trim(),
+        phone: formData.phone.trim(),
         secondary_email: formData.secondary_email,
         department: formData.department,
         year: parseInt(formData.year),
@@ -167,8 +201,8 @@ export default function OnboardingPage() {
                   <div className="relative">
                     <Phone weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                     <input
-                      type="tel" value={formData.phone} onChange={(e) => updateField("phone", e.target.value)}
-                      placeholder="+91 98765 43210" required
+                      type="tel" value={formData.phone} onChange={(e) => updateField("phone", e.target.value.replace(/\\D/g, ''))}
+                      placeholder="e.g. 9876543210" required maxLength={10}
                       className="w-full pl-11 pr-4 py-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] text-sm placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] transition-all duration-300"
                     />
                   </div>
@@ -279,8 +313,7 @@ export default function OnboardingPage() {
 
               {step < totalSteps ? (
                 <button
-                  onClick={() => setStep(step + 1)}
-                  disabled={step === 1 && (!formData.name || !formData.register_number || !formData.phone || !formData.secondary_email)}
+                  onClick={handleNext}
                   className="group flex items-center gap-2 pl-6 pr-3 py-3 rounded-xl bg-[var(--cta)] text-white text-sm font-semibold transition-all duration-300 hover:shadow-[var(--shadow-cta-glow)] active:scale-[0.98] disabled:opacity-40 cursor-pointer"
                 >
                   Continue

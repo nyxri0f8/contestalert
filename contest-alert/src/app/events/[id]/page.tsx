@@ -25,6 +25,7 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 import { createClient } from "@/lib/supabase/client";
+import { getEventImageUrls } from "@/lib/supabase/storage";
 import { Sidebar } from "@/components/shared/Sidebar";
 
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
@@ -50,6 +51,9 @@ export default function EventDetailsPage() {
   const [registering, setRegistering] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [phone, setPhone] = useState("");
+  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [transactionId, setTransactionId] = useState("");
+
   const [showForm, setShowForm] = useState(false);
   const [confirmingExternal, setConfirmingExternal] = useState(false);
 
@@ -64,6 +68,13 @@ export default function EventDetailsPage() {
           .select("*, registrations(count)")
           .eq("id", id)
           .single();
+        const [eventWithImage] = dbEvent ? await getEventImageUrls([dbEvent]) : [null];
+        const finalDbEvent = eventWithImage || dbEvent;
+        let paymentQrUrl = null;
+        if (dbEvent.payment_qr_path) {
+          const { data: qrData } = await supabase.storage.from("payment-qrs").createSignedUrl(dbEvent.payment_qr_path, 3600);
+          paymentQrUrl = qrData?.signedUrl || null;
+        }
 
         if (error || !dbEvent) {
           console.error("Event not found:", error);
@@ -92,6 +103,7 @@ export default function EventDetailsPage() {
             day: "2-digit",
             year: "numeric",
           }),
+          formSchema: dbEvent.form_schema || [],
           time: new Date(dbEvent.event_date).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
@@ -106,6 +118,8 @@ export default function EventDetailsPage() {
             year: "numeric",
           }),
           fee: parseFloat(dbEvent.fee) || 0,
+          paymentLink: dbEvent.payment_link || null,
+          paymentQrUrl: paymentQrUrl,
           // Coordinators (new columns with fallback)
           studentCoordName: dbEvent.student_coordinator_name || null,
           studentCoordPhone: dbEvent.student_coordinator_phone || null,
@@ -186,6 +200,8 @@ export default function EventDetailsPage() {
         p_team_name: teamName || null,
         p_phone: phone || null,
         p_is_external_confirmation: false,
+        p_form_data: formData,
+        p_transaction_id: transactionId || null,
       });
 
       if (error || (data && !data.success)) {
@@ -381,7 +397,76 @@ export default function EventDetailsPage() {
               <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="card-bezel">
                 <div className="card-bezel-inner p-6 space-y-6 bg-[var(--surface-subtle)]/50">
 
-                  {/* === INTERNAL EVENT ACTION === */}
+                  
+{/* === REGISTRATION MODAL (Dynamic Form) === */}
+{showForm && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-[var(--surface)] border border-[var(--surface-border)] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl"
+    >
+      <div className="p-6 border-b border-[var(--surface-border)] flex justify-between items-center">
+        <h3 className="text-lg font-bold">Register for {event.title}</h3>
+        <button onClick={() => setShowForm(false)} className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]">×</button>
+      </div>
+      
+      <div className="p-6 max-h-[60vh] overflow-y-auto">
+        <form id="registration-form" onSubmit={handleRegister} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Team Name (Optional)</label>
+            <input type="text" placeholder="e.g. CyberKnights" value={teamName} onChange={(e) => setTeamName(e.target.value)} className="w-full p-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-sm focus:ring-1 focus:ring-[var(--accent)]" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Contact Phone (Required)</label>
+            <input type="tel" placeholder="e.g. 9876543210" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-sm focus:ring-1 focus:ring-[var(--accent)]" />
+          </div>
+
+          {/* Dynamic Fields */}
+          {event.formSchema && event.formSchema.map((field: any) => (
+            <div key={field.id} className="space-y-1 pt-2">
+              <label className="text-xs font-semibold text-[var(--foreground-secondary)]">
+                {field.label} {field.required && <span className="text-red-500">*</span>}
+              </label>
+              {field.type === 'select' ? (
+                <select
+                  required={field.required}
+                  value={formData[field.id] || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, [field.id]: e.target.value }))}
+                  className="w-full p-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-sm focus:ring-1 focus:ring-[var(--accent)]"
+                >
+                  <option value="">Select...</option>
+                  {field.options && field.options.map((opt: string) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={field.type === 'number' ? 'number' : 'text'}
+                  required={field.required}
+                  value={formData[field.id] || ''}
+                  onChange={(e) => setFormData(prev => ({ ...prev, [field.id]: e.target.value }))}
+                  className="w-full p-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-sm focus:ring-1 focus:ring-[var(--accent)]"
+                />
+              )}
+            </div>
+          ))}
+        </form>
+      </div>
+
+      <div className="p-6 border-t border-[var(--surface-border)] flex gap-3">
+        <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-3 rounded-xl border border-[var(--surface-border)] hover:bg-[var(--surface-subtle)] text-sm font-bold transition-all">
+          Cancel
+        </button>
+        <button type="submit" form="registration-form" disabled={registering} className="flex-1 py-3 bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-sm font-bold rounded-xl transition-all shadow-[var(--shadow-cta-glow)] flex items-center justify-center">
+          {registering ? "Registering..." : "Confirm Registration"}
+        </button>
+      </div>
+    </motion.div>
+  </div>
+)}
+
+{/* === INTERNAL EVENT ACTION === */}
                   {event.eventType === "internal" && (
                     <>
                       <div className="space-y-1">
@@ -412,28 +497,6 @@ export default function EventDetailsPage() {
                             <Ticket weight="light" className="w-4 h-4" /> View Ticket
                           </Link>
                         </div>
-                      ) : showForm ? (
-                        <form onSubmit={handleRegister} className="space-y-3">
-                          <div className="space-y-1">
-                            <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Team Name (Optional)</label>
-                            <input type="text" placeholder="e.g. CyberKnights" value={teamName} onChange={(e) => setTeamName(e.target.value)} className="w-full p-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Contact Phone (Required)</label>
-                            <input type="tel" placeholder="e.g. 9876543210" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" />
-                            {phone && (
-                              <p className="text-[10px] text-emerald-500 font-semibold pl-0.5">
-                                ✓ Auto-filled from your profile
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex gap-2 pt-2">
-                            <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-[var(--surface-border)] hover:bg-[var(--surface)] text-xs font-bold transition-all">Cancel</button>
-                            <button type="submit" disabled={registering} className="flex-1 py-2.5 bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-xs font-bold rounded-xl transition-all shadow-[var(--shadow-cta-glow)]">
-                              {registering ? "Confirming..." : "Confirm"}
-                            </button>
-                          </div>
-                        </form>
                       ) : (
                         <button onClick={() => setShowForm(true)} className="w-full py-3 bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white font-bold rounded-xl transition-all shadow-[var(--shadow-cta-glow)] flex items-center justify-center gap-2">
                           Register Now
