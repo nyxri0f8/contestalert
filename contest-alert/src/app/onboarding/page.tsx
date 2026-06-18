@@ -4,12 +4,12 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Lightning,
   ArrowRight,
   ArrowLeft,
   User,
   Hash,
   Phone,
+  EnvelopeSimple,
   Buildings,
   GraduationCap,
   CheckCircle,
@@ -38,10 +38,11 @@ export default function OnboardingPage() {
   const [formData, setFormData] = useState({
     name: "",
     register_number: "",
+    phone: "",
+    secondary_email: "",
     department: "",
     year: "",
     section: "",
-    phone: "",
   });
 
   function updateField(field: string, value: string) {
@@ -66,10 +67,11 @@ export default function OnboardingPage() {
       .update({
         name: formData.name,
         register_number: formData.register_number,
+        phone: formData.phone,
+        secondary_email: formData.secondary_email,
         department: formData.department,
         year: parseInt(formData.year),
         section: formData.section.toUpperCase(),
-        phone: formData.phone,
         onboarding_completed: true,
       })
       .eq("id", user.id);
@@ -84,7 +86,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Also update the Auth user metadata so it's cached in the JWT immediately
+    // Update the Auth user metadata immediately
     await supabase.auth.updateUser({
       data: { onboarding_completed: true, role: "student" }
     });
@@ -95,18 +97,13 @@ export default function OnboardingPage() {
   const totalSteps = 3;
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-12 bg-[var(--background)]">
-      {/* Background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/4 -left-32 w-[400px] h-[400px] rounded-full bg-[var(--accent)]/6 blur-[100px]" />
-        <div className="absolute bottom-1/3 -right-24 w-[300px] h-[300px] rounded-full bg-[var(--cta)]/4 blur-[100px]" />
-      </div>
+    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-12 bg-transparent">
 
       <motion.div variants={stagger} initial="hidden" animate="visible" className="relative w-full max-w-lg">
         {/* Logo */}
         <motion.div variants={fadeUp} className="text-center mb-8 space-y-4 flex flex-col items-center">
           <div className="inline-flex items-center gap-2.5">
-            <div className="bg-white px-2.5 py-1.5 rounded-xl border border-neutral-100 shadow-sm flex items-center justify-center shrink-0">
+            <div className="bg-white dark:bg-white/95 px-2.5 py-1.5 rounded-xl border border-neutral-100 shadow-sm flex items-center justify-center shrink-0">
               <img src="/images/logo.png" alt="RIT Logo" className="h-7 w-auto object-contain" />
             </div>
             <span className="text-[var(--surface-border)] font-normal text-lg">|</span>
@@ -144,7 +141,7 @@ export default function OnboardingPage() {
                 <motion.div variants={fadeUp} className="space-y-1.5">
                   <label className="text-sm font-medium text-[var(--foreground-secondary)]">Full Name</label>
                   <div className="relative">
-                    <User weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                    <User weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                     <input
                       type="text" value={formData.name} onChange={(e) => updateField("name", e.target.value)}
                       placeholder="Your full name" required
@@ -156,7 +153,7 @@ export default function OnboardingPage() {
                 <motion.div variants={fadeUp} className="space-y-1.5">
                   <label className="text-sm font-medium text-[var(--foreground-secondary)]">Register Number</label>
                   <div className="relative">
-                    <Hash weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                    <Hash weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                     <input
                       type="text" value={formData.register_number} onChange={(e) => updateField("register_number", e.target.value)}
                       placeholder="e.g., 312621104001" required
@@ -168,10 +165,22 @@ export default function OnboardingPage() {
                 <motion.div variants={fadeUp} className="space-y-1.5">
                   <label className="text-sm font-medium text-[var(--foreground-secondary)]">Phone Number</label>
                   <div className="relative">
-                    <Phone weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                    <Phone weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                     <input
                       type="tel" value={formData.phone} onChange={(e) => updateField("phone", e.target.value)}
                       placeholder="+91 98765 43210" required
+                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] text-sm placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] transition-all duration-300"
+                    />
+                  </div>
+                </motion.div>
+
+                <motion.div variants={fadeUp} className="space-y-1.5">
+                  <label className="text-sm font-medium text-[var(--foreground-secondary)]">Secondary Email ID</label>
+                  <div className="relative">
+                    <EnvelopeSimple weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                    <input
+                      type="email" value={formData.secondary_email} onChange={(e) => updateField("secondary_email", e.target.value)}
+                      placeholder="e.g., secondary@gmail.com" required
                       className="w-full pl-11 pr-4 py-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] text-sm placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] transition-all duration-300"
                     />
                   </div>
@@ -185,7 +194,7 @@ export default function OnboardingPage() {
                 <motion.div variants={fadeUp} className="space-y-1.5">
                   <label className="text-sm font-medium text-[var(--foreground-secondary)]">Department</label>
                   <div className="relative">
-                    <Buildings weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                    <Buildings weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                     <select
                       value={formData.department} onChange={(e) => updateField("department", e.target.value)}
                       required
@@ -203,7 +212,7 @@ export default function OnboardingPage() {
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-[var(--foreground-secondary)]">Year</label>
                     <div className="relative">
-                      <GraduationCap weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
+                      <GraduationCap weight="light" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
                       <select
                         value={formData.year} onChange={(e) => updateField("year", e.target.value)}
                         required
@@ -233,7 +242,7 @@ export default function OnboardingPage() {
             {step === 3 && (
               <motion.div key="step3" variants={stagger} initial="hidden" animate="visible" className="space-y-5">
                 <motion.div variants={fadeUp} className="text-center space-y-2">
-                  <CheckCircle weight="duotone" className="w-12 h-12 text-[var(--accent)] mx-auto" />
+                  <CheckCircle weight="light" className="w-12 h-12 text-[var(--accent)] mx-auto" />
                   <h3 className="font-semibold text-lg">Review Your Details</h3>
                 </motion.div>
                 <motion.div variants={fadeUp} className="space-y-3">
@@ -241,11 +250,12 @@ export default function OnboardingPage() {
                     { label: "Name", value: formData.name },
                     { label: "Register No.", value: formData.register_number },
                     { label: "Phone", value: formData.phone },
+                    { label: "Secondary Email", value: formData.secondary_email },
                     { label: "Department", value: DEPARTMENTS.find((d) => d.value === formData.department)?.full || formData.department },
                     { label: "Year", value: formData.year ? `Year ${formData.year}` : "" },
                     { label: "Section", value: formData.section.toUpperCase() },
                   ].map((item) => (
-                    <div key={item.label} className="flex items-center justify-between py-2 border-b border-[var(--surface-border)] last:border-0">
+                    <div key={item.label} className="flex items-center justify-between py-2 border-b border-[var(--surface-border)] last:border-0 font-body">
                       <span className="text-sm text-[var(--foreground-muted)]">{item.label}</span>
                       <span className="text-sm font-medium">{item.value || "—"}</span>
                     </div>
@@ -259,9 +269,9 @@ export default function OnboardingPage() {
               {step > 1 ? (
                 <button
                   onClick={() => setStep(step - 1)}
-                  className="flex items-center gap-2 px-5 py-3 rounded-xl border border-[var(--surface-border)] text-sm font-medium hover:bg-[var(--surface-subtle)] transition-all duration-300 active:scale-[0.98]"
+                  className="flex items-center gap-2 px-5 py-3 rounded-xl border border-[var(--surface-border)] text-sm font-medium hover:bg-[var(--surface-subtle)] transition-all duration-300 active:scale-[0.98] cursor-pointer"
                 >
-                  <ArrowLeft weight="bold" className="w-3.5 h-3.5" /> Back
+                  <ArrowLeft weight="light" className="w-3.5 h-3.5" /> Back
                 </button>
               ) : (
                 <div />
@@ -270,23 +280,23 @@ export default function OnboardingPage() {
               {step < totalSteps ? (
                 <button
                   onClick={() => setStep(step + 1)}
-                  disabled={step === 1 && (!formData.name || !formData.register_number)}
-                  className="group flex items-center gap-2 pl-6 pr-3 py-3 rounded-xl bg-[var(--cta)] text-white text-sm font-semibold transition-all duration-300 hover:shadow-[var(--shadow-cta-glow)] active:scale-[0.98] disabled:opacity-40"
+                  disabled={step === 1 && (!formData.name || !formData.register_number || !formData.phone || !formData.secondary_email)}
+                  className="group flex items-center gap-2 pl-6 pr-3 py-3 rounded-xl bg-[var(--cta)] text-white text-sm font-semibold transition-all duration-300 hover:shadow-[var(--shadow-cta-glow)] active:scale-[0.98] disabled:opacity-40 cursor-pointer"
                 >
                   Continue
                   <span className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center group-hover:translate-x-0.5 transition-transform duration-300">
-                    <ArrowRight weight="bold" className="w-3.5 h-3.5" />
+                    <ArrowRight weight="light" className="w-3.5 h-3.5" />
                   </span>
                 </button>
               ) : (
                 <button
                   onClick={handleSubmit}
                   disabled={loading}
-                  className="group flex items-center gap-2 pl-6 pr-3 py-3 rounded-xl bg-[var(--accent)] text-white text-sm font-semibold transition-all duration-300 hover:shadow-[var(--shadow-glow)] active:scale-[0.98] disabled:opacity-40"
+                  className="group flex items-center gap-2 pl-6 pr-3 py-3 rounded-xl bg-[var(--accent)] text-white text-sm font-semibold transition-all duration-300 hover:shadow-[var(--shadow-glow)] active:scale-[0.98] disabled:opacity-40 cursor-pointer"
                 >
                   {loading ? "Saving..." : "Complete Profile"}
                   <span className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center group-hover:translate-x-0.5 transition-transform duration-300">
-                    <CheckCircle weight="bold" className="w-3.5 h-3.5" />
+                    <CheckCircle weight="light" className="w-3.5 h-3.5" />
                   </span>
                 </button>
               )}

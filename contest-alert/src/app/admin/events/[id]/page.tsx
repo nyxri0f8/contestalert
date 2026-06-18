@@ -1,65 +1,37 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import {
-  Lightning, CalendarCheck, Ticket, Trophy, Bell, SignOut,
-  ArrowLeft, House, Sun, Moon, QrCode, ClipboardText,
-  Users, Sparkle, PencilSimple
+  ArrowLeft,
+  PencilSimple,
+  Buildings,
+  Link as LinkIcon,
+  GraduationCap,
+  Lightbulb,
+  UsersThree,
+  DotsThreeCircle,
 } from "@phosphor-icons/react";
-import { useTheme } from "@/components/shared/ThemeProvider";
+import { createClient } from "@/lib/supabase/client";
+import { Sidebar } from "@/components/shared/Sidebar";
 
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
 const fadeUp = {
-  hidden: { opacity: 0, y: 15 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE_OUT_EXPO } }
+  hidden: { opacity: 0, y: 15, filter: "blur(4px)" },
+  visible: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.5, ease: EASE_OUT_EXPO } },
 };
 
-const NAV_ITEMS = [
-  { label: "Admin Panel", icon: House, href: "/admin" },
-  { label: "Manage Events", icon: CalendarCheck, href: "/admin/events", active: true },
-  { label: "QR Scanner", icon: QrCode, href: "/admin/scanner" },
-  { label: "Registrations", icon: ClipboardText, href: "/admin/registrations" },
-  { label: "Winner Board", icon: Trophy, href: "/admin/winners" },
-  { label: "Student Mode", icon: Users, href: "/dashboard" },
-];
+const inputClass = "w-full p-3 rounded-xl border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 focus:border-[var(--accent)] transition-all duration-300";
+const labelClass = "text-xs font-semibold text-[var(--foreground-secondary)]";
 
-function Sidebar() {
-  const { resolvedTheme, setTheme } = useTheme();
-  return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-[var(--surface)] border-r border-[var(--surface-border)] flex flex-col z-30 hidden lg:flex">
-      <div className="px-6 py-5 border-b border-[var(--surface-border)]">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="bg-white px-2 py-1 rounded-lg border border-neutral-100 shadow-sm flex items-center justify-center shrink-0">
-            <img src="/images/logo.png" alt="RIT Logo" className="h-6 w-auto object-contain" />
-          </div>
-          <span className="text-[var(--surface-border)] font-normal">|</span>
-          <span className="font-display font-extrabold text-[13px] tracking-tight block leading-none text-[var(--foreground)]">Admin Portal</span>
-        </Link>
-      </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <Link key={item.label} href={item.href}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-              item.active ? "bg-[var(--accent-muted)] text-[var(--accent-text)]" : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-            }`}>
-            <item.icon weight={item.active ? "duotone" : "regular"} className="w-[18px] h-[18px]" />
-            <span className="flex-1">{item.label}</span>
-          </Link>
-        ))}
-      </nav>
-      <div className="px-3 py-4 border-t border-[var(--surface-border)] space-y-1">
-        <button onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium text-[var(--foreground-secondary)] hover:bg-[var(--surface-subtle)] transition-all duration-300">
-          {resolvedTheme === "dark" ? <Sun weight="regular" className="w-[18px] h-[18px]" /> : <Moon weight="regular" className="w-[18px] h-[18px]" />}
-          <span>{resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-        </button>
-      </div>
-    </aside>
-  );
-}
+const HOSTED_BY_OPTIONS = [
+  { value: "department", label: "Department", icon: Buildings },
+  { value: "innovation_cell", label: "Innovation Cell", icon: Lightbulb },
+  { value: "clubs", label: "Clubs", icon: UsersThree },
+  { value: "others", label: "Others", icon: DotsThreeCircle },
+];
 
 export default function EditEventPage() {
   const router = useRouter();
@@ -68,148 +40,228 @@ export default function EditEventPage() {
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
-  // Form states
+  // Event type
+  const [eventType, setEventType] = useState<"internal" | "external">("internal");
+
+  // Common fields
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("hackathon");
-  const [department, setDepartment] = useState("CSE");
-  const [date, setDate] = useState("");
-  const [venue, setVenue] = useState("");
-  const [seats, setSeats] = useState("60");
-  const [fee, setFee] = useState("0");
-  const [deadline, setDeadline] = useState("");
-  const [image, setImage] = useState("");
   const [desc, setDesc] = useState("");
   const [rules, setRules] = useState("");
   const [eligibility, setEligibility] = useState("");
-  
-  // Coordinator
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
+  const [image, setImage] = useState("");
+  const [date, setDate] = useState("");
+
+  // Internal-only fields
+  const [hostedBy, setHostedBy] = useState("department");
+  const [hostedByName, setHostedByName] = useState("");
+  const [department, setDepartment] = useState("CSE");
+  const [venue, setVenue] = useState("");
+  const [seats, setSeats] = useState("60");
+  const [fee, setFee] = useState("0");
+  const [registrationOpen, setRegistrationOpen] = useState("");
+  const [registrationClose, setRegistrationClose] = useState("");
+
+  // Student Coordinator
+  const [studentCoordName, setStudentCoordName] = useState("");
+  const [studentCoordPhone, setStudentCoordPhone] = useState("");
+  const [studentCoordEmail, setStudentCoordEmail] = useState("");
+
+  // Faculty Coordinator
+  const [facultyCoordName, setFacultyCoordName] = useState("");
+  const [facultyCoordPhone, setFacultyCoordPhone] = useState("");
+  const [facultyCoordEmail, setFacultyCoordEmail] = useState("");
+
+  // External-only
+  const [externalLink, setExternalLink] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem("rit_events");
-    if (stored) {
-      const list = JSON.parse(stored);
-      const found = list.find((e: any) => e.id === id);
-      if (found) {
-        setTitle(found.title);
-        setCategory(found.category);
-        setDepartment(found.department);
-        // Format ISO datetime local string: YYYY-MM-DDTHH:MM
-        setDate(found.date ? new Date(found.date).toISOString().slice(0, 16) : "");
-        setVenue(found.venue);
-        setSeats(String(found.seats));
-        setFee(String(found.fee));
-        setDeadline(found.deadlinedate ? new Date(found.deadlinedate).toISOString().slice(0, 10) : "");
-        setImage(found.image || "");
-        setDesc(found.desc || "");
-        setRules(found.rules || "");
-        setEligibility(found.eligibility || "");
-        setContactName(found.contactName || "");
-        setContactEmail(found.contactEmail || "");
-        setContactPhone(found.contactPhone || "");
-      } else {
+    async function loadEvent() {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.from("events").select("*").eq("id", id).maybeSingle();
+
+        if (data) {
+          setEventType(data.event_type || "internal");
+          setTitle(data.title);
+          setCategory(data.category);
+          setDepartment(data.department || "All");
+          setDate(data.event_date ? new Date(data.event_date).toISOString().slice(0, 16) : "");
+          setVenue(data.venue || "");
+          setSeats(String(data.capacity || 60));
+          setFee(String(data.fee || 0));
+          setImage(data.cover_image || "");
+          setDesc(data.description || "");
+          setRules(data.rules || "");
+          setEligibility(data.eligibility || "");
+
+          // Internal fields
+          setHostedBy(data.hosted_by || "department");
+          setHostedByName(data.hosted_by_name || "");
+          setRegistrationOpen(data.registration_open ? new Date(data.registration_open).toISOString().slice(0, 16) : "");
+          setRegistrationClose(data.registration_close ? new Date(data.registration_close).toISOString().slice(0, 16) : (data.deadline ? new Date(data.deadline).toISOString().slice(0, 16) : ""));
+          setStudentCoordName(data.student_coordinator_name || "");
+          setStudentCoordPhone(data.student_coordinator_phone || "");
+          setStudentCoordEmail(data.student_coordinator_email || "");
+          setFacultyCoordName(data.faculty_coordinator_name || data.contact_person || "");
+          setFacultyCoordPhone(data.faculty_coordinator_phone || "");
+          setFacultyCoordEmail(data.faculty_coordinator_email || data.contact_email || "");
+
+          // External fields
+          setExternalLink(data.external_link || "");
+        } else {
+          setNotFound(true);
+        }
+      } catch (err) {
+        console.error(err);
         setNotFound(true);
       }
-    } else {
-      setNotFound(true);
     }
+    if (id) loadEvent();
   }, [id]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    setTimeout(() => {
-      const stored = localStorage.getItem("rit_events");
-      const list = stored ? JSON.parse(stored) : [];
-      
-      const updated = list.map((e: any) => {
-        if (e.id === id) {
-          return {
-            ...e,
-            title,
-            category,
-            department,
-            date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-            venue,
-            seats: parseInt(seats),
-            deadlinedate: new Date(deadline).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-            fee: parseInt(fee),
-            image,
-            desc,
-            rules,
-            eligibility,
-            contactName,
-            contactEmail,
-            contactPhone
-          };
-        }
-        return e;
-      });
+    try {
+      const supabase = createClient();
 
-      localStorage.setItem("rit_events", JSON.stringify(updated));
-      setLoading(false);
+      const updateData: any = {
+        title,
+        category,
+        event_type: eventType,
+        event_date: new Date(date).toISOString(),
+        cover_image: image,
+        description: desc,
+        rules,
+        eligibility,
+      };
+
+      if (eventType === "internal") {
+        updateData.hosted_by = hostedBy;
+        updateData.hosted_by_name = hostedByName || null;
+        updateData.department = department === "All" ? null : department;
+        updateData.venue = venue;
+        updateData.capacity = parseInt(seats) || 100;
+        updateData.fee = parseFloat(fee) || 0;
+        updateData.registration_open = registrationOpen ? new Date(registrationOpen).toISOString() : null;
+        updateData.registration_close = registrationClose ? new Date(registrationClose).toISOString() : null;
+        updateData.deadline = registrationClose ? new Date(registrationClose).toISOString() : new Date(date).toISOString();
+        updateData.student_coordinator_name = studentCoordName || null;
+        updateData.student_coordinator_phone = studentCoordPhone || null;
+        updateData.student_coordinator_email = studentCoordEmail || null;
+        updateData.faculty_coordinator_name = facultyCoordName || null;
+        updateData.faculty_coordinator_phone = facultyCoordPhone || null;
+        updateData.faculty_coordinator_email = facultyCoordEmail || null;
+        updateData.contact_person = facultyCoordName || null;
+        updateData.contact_email = facultyCoordEmail || null;
+        updateData.external_link = null;
+      } else {
+        updateData.external_link = externalLink;
+        updateData.deadline = new Date(date).toISOString();
+        updateData.capacity = 9999;
+      }
+
+      const { error } = await supabase.from("events").update(updateData).eq("id", id);
+
+      if (error) throw error;
+
       router.push("/admin/events");
-    }, 1000);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save: " + (err as any).message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (notFound) {
     return (
-      <div className="min-h-[100dvh] bg-[var(--background)] flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-transparent flex items-center justify-center">
         <div className="text-center space-y-4">
           <h2 className="text-lg font-bold">Event Not Found</h2>
-          <p className="text-xs text-[var(--foreground-muted)]">The event you are attempting to edit does not exist or has been deleted.</p>
-          <Link href="/admin/events" className="inline-block px-4 py-2 bg-[var(--surface)] border border-[var(--surface-border)] rounded-xl text-xs font-bold">
-            Back to Events
-          </Link>
+          <Link href="/admin/events" className="text-sm text-[var(--accent)] hover:underline">← Back to Events</Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[var(--background)]">
+    <div className="min-h-[100dvh] bg-transparent">
       <Sidebar />
       <main className="lg:ml-[var(--sidebar-width)] min-h-[100dvh] pb-16">
-        
-        {/* Floating Action Bar */}
-        <header className="sticky top-0 z-20 glass border-b border-[var(--surface-border)] px-6 lg:px-8 py-4 flex items-center justify-between">
+        <header className="sticky top-0 z-20 glass-premium border-b border-[var(--surface-border)] px-6 lg:px-8 py-4 flex items-center justify-between">
           <Link href="/admin/events" className="flex items-center gap-2 text-xs font-semibold text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors">
-            <ArrowLeft weight="bold" className="w-4.5 h-4.5" /> Back to Manage
+            <ArrowLeft weight="light" className="w-4 h-4" /> Back to Manage
           </Link>
-          <span className="text-xs font-bold text-[var(--foreground-muted)] uppercase tracking-wider">Modify Published Event</span>
+          <span className="text-xs font-bold text-[var(--foreground-muted)] uppercase tracking-wider">Edit Event</span>
         </header>
 
-        {/* Content Form */}
-        <div className="px-6 lg:px-8 py-8 max-w-3xl mx-auto">
+        <div className="px-6 lg:px-8 py-8 max-w-3xl mx-auto space-y-6">
+          {/* Type Selector */}
+          <motion.div variants={fadeUp} initial="hidden" animate="visible" className="grid grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setEventType("internal")}
+              className={`p-5 rounded-2xl border-2 transition-all duration-300 text-left ${
+                eventType === "internal"
+                  ? "border-[var(--accent)] bg-[var(--accent-muted)] shadow-[var(--shadow-glow)]"
+                  : "border-[var(--surface-border)] hover:border-[var(--surface-border-hover)]"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${eventType === "internal" ? "bg-[var(--accent)]/20" : "bg-[var(--surface-border)]"}`}>
+                  <Buildings weight="light" className={`w-5 h-5 ${eventType === "internal" ? "text-[var(--accent)]" : "text-[var(--foreground-muted)]"}`} />
+                </div>
+                <div>
+                  <div className={`text-sm font-bold ${eventType === "internal" ? "text-[var(--accent-text)]" : "text-[var(--foreground)]"}`}>Internal Event</div>
+                  <div className="text-[10px] text-[var(--foreground-muted)]">Campus event with full registration</div>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEventType("external")}
+              className={`p-5 rounded-2xl border-2 transition-all duration-300 text-left ${
+                eventType === "external"
+                  ? "border-[var(--cta)] bg-[var(--cta-muted)] shadow-[var(--shadow-cta-glow)]"
+                  : "border-[var(--surface-border)] hover:border-[var(--surface-border-hover)]"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${eventType === "external" ? "bg-[var(--cta)]/20" : "bg-[var(--surface-border)]"}`}>
+                  <LinkIcon weight="light" className={`w-5 h-5 ${eventType === "external" ? "text-[var(--cta)]" : "text-[var(--foreground-muted)]"}`} />
+                </div>
+                <div>
+                  <div className={`text-sm font-bold ${eventType === "external" ? "text-[var(--cta-text)]" : "text-[var(--foreground)]"}`}>External Event</div>
+                  <div className="text-[10px] text-[var(--foreground-muted)]">Redirect to external registration</div>
+                </div>
+              </div>
+            </button>
+          </motion.div>
+
+          {/* Form */}
           <motion.div variants={fadeUp} initial="hidden" animate="visible" className="card-bezel">
-            <form onSubmit={handleSubmit} className="card-bezel-inner p-6 sm:p-8 space-y-6">
-              
+            <form onSubmit={handleSubmit} className="card-bezel-inner p-6 sm:p-8 space-y-6 bg-transparent">
               <div className="flex items-center gap-2 border-b border-[var(--surface-border)] pb-3">
                 <PencilSimple className="text-[var(--accent)] w-6 h-6 shrink-0" />
                 <div>
-                  <h2 className="text-base font-bold">Edit Campus Event Details</h2>
-                  <p className="text-[10px] text-[var(--foreground-muted)]">Modifies current parameters. Registered students will see updates instantly.</p>
+                  <h2 className="text-base font-bold">Edit {eventType === "internal" ? "Internal" : "External"} Event</h2>
+                  <p className="text-[10px] text-[var(--foreground-muted)]">Changes are saved immediately on publish.</p>
                 </div>
               </div>
 
-              {/* Event title */}
+              {/* Title */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Event Title</label>
-                <input 
-                  type="text" required placeholder="e.g. CodeStorm Hackathon 2026"
-                  value={title} onChange={e => setTitle(e.target.value)}
-                  className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                />
+                <label className={labelClass}>Event Title</label>
+                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Category</label>
-                  <select value={category} onChange={e => setCategory(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]">
+                  <label className={labelClass}>Category</label>
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>
                     <option value="hackathon">Hackathon</option>
                     <option value="workshop">Workshop</option>
                     <option value="symposium">Symposium</option>
@@ -219,162 +271,148 @@ export default function EditEventPage() {
                     <option value="cultural">Cultural Festival</option>
                   </select>
                 </div>
-
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Organizing Department</label>
-                  <select value={department} onChange={e => setDepartment(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]">
-                    <option value="CSE">Computer Science (CSE)</option>
-                    <option value="ECE">Electronics (ECE)</option>
-                    <option value="AIML">Artificial Intelligence (AIML)</option>
-                    <option value="AIDS">Data Science (AIDS)</option>
-                    <option value="Biotechnology">Biotechnology (BT)</option>
-                    <option value="Mechanical">Mechanical (ME)</option>
-                    <option value="All">All Departments / General</option>
-                  </select>
+                  <label className={labelClass}>Event Date & Time</label>
+                  <input type="datetime-local" required value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
                 </div>
+              </div>
+
+              {/* Internal fields */}
+              <AnimatePresence mode="wait">
+                {eventType === "internal" && (
+                  <motion.div key="int" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.4, ease: EASE_OUT_EXPO }} className="space-y-6 overflow-hidden">
+                    {/* Hosted By */}
+                    <div className="space-y-2">
+                      <label className={labelClass}>Hosted By</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {HOSTED_BY_OPTIONS.map((opt) => (
+                          <button key={opt.value} type="button" onClick={() => setHostedBy(opt.value)}
+                            className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 transition-all duration-300 ${
+                              hostedBy === opt.value ? "border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent-text)]" : "border-[var(--surface-border)] text-[var(--foreground-secondary)]"
+                            }`}>
+                            <opt.icon weight="light" className="w-4 h-4" /> {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {(hostedBy === "clubs" || hostedBy === "others" || hostedBy === "innovation_cell") && (
+                      <div className="space-y-1">
+                        <label className={labelClass}>{hostedBy === "clubs" ? "Club Name" : hostedBy === "innovation_cell" ? "Cell Name" : "Organization Name"}</label>
+                        <input type="text" value={hostedByName} onChange={(e) => setHostedByName(e.target.value)} className={inputClass} />
+                      </div>
+                    )}
+
+                    {hostedBy === "department" && (
+                      <div className="space-y-1">
+                        <label className={labelClass}>Organizing Department</label>
+                        <select value={department} onChange={(e) => setDepartment(e.target.value)} className={inputClass}>
+                          <option value="CSE">Computer Science (CSE)</option>
+                          <option value="ECE">Electronics (ECE)</option>
+                          <option value="AIML">Artificial Intelligence (AIML)</option>
+                          <option value="AIDS">Data Science (AIDS)</option>
+                          <option value="CCE">Computer & Communication (CCE)</option>
+                          <option value="Biotechnology">Biotechnology (BT)</option>
+                          <option value="Mechanical">Mechanical (ME)</option>
+                          <option value="All">All Departments / General</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className={labelClass}>Registration Opens</label>
+                        <input type="datetime-local" value={registrationOpen} onChange={(e) => setRegistrationOpen(e.target.value)} className={inputClass} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={labelClass}>Registration Closes</label>
+                        <input type="datetime-local" required value={registrationClose} onChange={(e) => setRegistrationClose(e.target.value)} className={inputClass} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className={labelClass}>Venue</label>
+                        <input type="text" required value={venue} onChange={(e) => setVenue(e.target.value)} className={inputClass} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={labelClass}>Seat Capacity</label>
+                        <input type="number" required value={seats} onChange={(e) => setSeats(e.target.value)} className={inputClass} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={labelClass}>Fee (₹)</label>
+                        <input type="number" required value={fee} onChange={(e) => setFee(e.target.value)} className={inputClass} />
+                      </div>
+                    </div>
+
+                    {/* Student Coordinator */}
+                    <div className="border-t border-[var(--surface-border)] pt-4 space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground-muted)] flex items-center gap-2">
+                        <GraduationCap weight="light" className="w-4 h-4 text-[var(--accent)]" /> Student Coordinator
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1"><label className={labelClass}>Name</label><input type="text" value={studentCoordName} onChange={(e) => setStudentCoordName(e.target.value)} className={inputClass} /></div>
+                        <div className="space-y-1"><label className={labelClass}>Phone</label><input type="tel" value={studentCoordPhone} onChange={(e) => setStudentCoordPhone(e.target.value)} className={inputClass} /></div>
+                        <div className="space-y-1"><label className={labelClass}>Email</label><input type="email" value={studentCoordEmail} onChange={(e) => setStudentCoordEmail(e.target.value)} className={inputClass} /></div>
+                      </div>
+                    </div>
+
+                    {/* Faculty Coordinator */}
+                    <div className="border-t border-[var(--surface-border)] pt-4 space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground-muted)] flex items-center gap-2">
+                        <Buildings weight="light" className="w-4 h-4 text-[var(--cta)]" /> Faculty Coordinator
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1"><label className={labelClass}>Name</label><input type="text" value={facultyCoordName} onChange={(e) => setFacultyCoordName(e.target.value)} className={inputClass} /></div>
+                        <div className="space-y-1"><label className={labelClass}>Phone</label><input type="tel" value={facultyCoordPhone} onChange={(e) => setFacultyCoordPhone(e.target.value)} className={inputClass} /></div>
+                        <div className="space-y-1"><label className={labelClass}>Email</label><input type="email" value={facultyCoordEmail} onChange={(e) => setFacultyCoordEmail(e.target.value)} className={inputClass} /></div>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
+                {eventType === "external" && (
+                  <motion.div key="ext" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.4, ease: EASE_OUT_EXPO }} className="space-y-4 overflow-hidden">
+                    <div className="space-y-1">
+                      <label className={labelClass}>External Registration Link *</label>
+                      <input type="url" required placeholder="https://..." value={externalLink} onChange={(e) => setExternalLink(e.target.value)} className={inputClass} />
+                      <p className="text-[10px] text-[var(--foreground-muted)]">Students will be redirected here to register.</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Common fields */}
+              <div className="space-y-1">
+                <label className={labelClass}>Cover Image URL</label>
+                <input type="url" value={image} onChange={(e) => setImage(e.target.value)} className={inputClass} />
+              </div>
+
+              <div className="space-y-1">
+                <label className={labelClass}>Description</label>
+                <textarea rows={4} required value={desc} onChange={(e) => setDesc(e.target.value)} className={inputClass} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Event Date & Time</label>
-                  <input 
-                    type="datetime-local" required
-                    value={date} onChange={e => setDate(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                  />
+                  <label className={labelClass}>Rules</label>
+                  <textarea rows={4} value={rules} onChange={(e) => setRules(e.target.value)} className={inputClass} />
                 </div>
-
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Registration Deadline</label>
-                  <input 
-                    type="date" required
-                    value={deadline} onChange={e => setDeadline(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                  />
+                  <label className={labelClass}>Eligibility</label>
+                  <textarea rows={4} value={eligibility} onChange={(e) => setEligibility(e.target.value)} className={inputClass} />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Venue</label>
-                  <input 
-                    type="text" required placeholder="e.g. Main Auditorium"
-                    value={venue} onChange={e => setVenue(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Seat Capacity</label>
-                  <input 
-                    type="number" required placeholder="60"
-                    value={seats} onChange={e => setSeats(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Registration Fee (₹)</label>
-                  <input 
-                    type="number" required placeholder="0 for Free"
-                    value={fee} onChange={e => setFee(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Cover Image URL</label>
-                <input 
-                  type="url" required
-                  value={image} onChange={e => setImage(e.target.value)}
-                  className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Description</label>
-                <textarea 
-                  rows={4} required placeholder="Detailed information regarding the event, schedule, outline..."
-                  value={desc} onChange={e => setDesc(e.target.value)}
-                  className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                />
-              </div>
-
-              {/* Rules & Eligibility */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Rules (One per line)</label>
-                  <textarea 
-                    rows={4} placeholder="1. Team size: 2-4&#10;2. Bring laptops"
-                    value={rules} onChange={e => setRules(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Eligibility</label>
-                  <textarea 
-                    rows={4} placeholder="Open to CSE, IT, ECE engineering streams."
-                    value={eligibility} onChange={e => setEligibility(e.target.value)}
-                    className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-                  />
-                </div>
-              </div>
-
-              {/* Coordinator Details */}
-              <div className="border-t border-[var(--surface-border)] pt-4 space-y-4">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--foreground-muted)]">Faculty Coordinator Details</h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Full Name</label>
-                    <input 
-                      type="text" placeholder="Dr. A. Ramesh"
-                      value={contactName} onChange={e => setContactName(e.target.value)}
-                      className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-[var(--foreground-secondary)]">College Email</label>
-                    <input 
-                      type="email" placeholder="ramesh@rit.edu"
-                      value={contactEmail} onChange={e => setContactEmail(e.target.value)}
-                      className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Contact Phone</label>
-                    <input 
-                      type="tel" placeholder="+91 98401 23456"
-                      value={contactPhone} onChange={e => setContactPhone(e.target.value)}
-                      className="w-full p-3 rounded-lg border border-[var(--surface-border)] bg-[var(--background)] text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
               <div className="flex gap-3 justify-end pt-4 border-t border-[var(--surface-border)]">
-                <Link href="/admin/events" className="px-5 py-3 rounded-xl border border-[var(--surface-border)] hover:bg-[var(--surface-subtle)] text-xs font-bold transition-all">
-                  Cancel
-                </Link>
-                <button 
-                  type="submit" disabled={loading}
-                  className="px-6 py-3 bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-xs font-bold rounded-xl transition-all shadow-[var(--shadow-cta-glow)] flex items-center justify-center"
-                >
-                  {loading ? "Saving changes..." : "Save Changes"}
+                <Link href="/admin/events" className="px-5 py-3 rounded-xl border border-[var(--surface-border)] hover:bg-[var(--surface-subtle)] text-xs font-bold transition-all">Cancel</Link>
+                <button type="submit" disabled={loading} className="px-6 py-3 bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-xs font-bold rounded-xl transition-all shadow-[var(--shadow-cta-glow)] disabled:opacity-50">
+                  {loading ? "Saving..." : "Save Changes"}
                 </button>
               </div>
-
             </form>
           </motion.div>
         </div>
-
       </main>
     </div>
   );

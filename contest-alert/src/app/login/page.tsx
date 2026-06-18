@@ -1,46 +1,45 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  Lightning,
   GoogleLogo,
-  MicrosoftOutlookLogo,
-  EnvelopeSimple,
-  Lock,
   ArrowRight,
-  Eye,
-  EyeSlash,
+  Sparkle,
+  Sun,
+  Moon,
+  Info,
 } from "@phosphor-icons/react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useTheme } from "@/components/shared/ThemeProvider";
 
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE_OUT_EXPO } },
-};
-
-const stagger = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.08, delayChildren: 0.2 } },
-};
-
 export default function LoginPage() {
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
-  async function handleOAuth(provider: "google" | "azure") {
+  const { resolvedTheme, setTheme } = useTheme();
+
+  useEffect(() => {
+    if (searchParams.get("error") === "config") {
+      setError(
+        "Application is not configured. Contact your administrator or set Supabase environment variables."
+      );
+    } else if (searchParams.get("error") === "auth_callback_error") {
+      setError("Sign-in failed. Please try again with your college Google account.");
+    }
+  }, [searchParams]);
+
+  async function handleGoogleOAuth() {
     setLoading(true);
     setError(null);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
@@ -51,190 +50,134 @@ export default function LoginPage() {
     }
   }
 
-  async function handleAdminLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
-    }
-    setLoading(false);
-  }
-
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center px-4 py-12 bg-[var(--background)]">
-      {/* Background mesh */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/3 -left-32 w-[400px] h-[400px] rounded-full bg-[var(--accent)]/6 blur-[100px]" />
-        <div className="absolute bottom-1/4 -right-24 w-[350px] h-[350px] rounded-full bg-[var(--cta)]/4 blur-[100px]" />
+    <div className="min-h-[100dvh] w-full flex items-center justify-center bg-[var(--background)] text-[var(--foreground)] relative overflow-hidden font-body transition-colors duration-500 px-4">
+      
+      {/* Floating Theme Switcher Option */}
+      <div className="absolute top-6 right-6 z-30">
+        <button
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          className="w-10 h-10 rounded-xl glass border border-[var(--surface-border)] flex items-center justify-center text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-[var(--surface-subtle)] transition-all duration-300 active:scale-95 cursor-pointer shadow-sm"
+          aria-label="Toggle Theme"
+        >
+          {resolvedTheme === "dark" ? (
+            <Sun weight="light" className="w-5 h-5 text-amber-400" />
+          ) : (
+            <Moon weight="light" className="w-5 h-5 text-slate-700" />
+          )}
+        </button>
       </div>
 
-      <motion.div
-        variants={stagger}
-        initial="hidden"
-        animate="visible"
-        className="relative w-full max-w-md"
-      >
-        {/* Logo + Header */}
-        <motion.div variants={fadeUp} className="text-center mb-8 space-y-4">
-          <Link href="/" className="inline-flex items-center gap-2.5 group">
-            <div className="bg-white px-2.5 py-1.5 rounded-xl border border-neutral-100 shadow-sm flex items-center justify-center shrink-0 group-hover:scale-102 transition-transform duration-300">
-              <img src="/images/logo.png" alt="RIT Logo" className="h-7 w-auto object-contain" />
+      {/* Background Aurora Mesh Glow Elements */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <div 
+          className="absolute -top-[10%] -left-[10%] w-[80vw] h-[80vw] max-w-[800px] rounded-full bg-cyan-500/5 dark:bg-cyan-500/15 blur-[140px]"
+          style={{
+            animation: "aurora-drift 25s infinite alternate ease-in-out",
+          }}
+        />
+        <div 
+          className="absolute -bottom-[10%] -right-[10%] w-[70vw] h-[70vw] max-w-[700px] rounded-full bg-rose-500/5 dark:bg-rose-500/15 blur-[140px]"
+          style={{
+            animation: "aurora-drift-reverse 30s infinite alternate ease-in-out",
+          }}
+        />
+      </div>
+
+      {/* Centered Login Dock Container */}
+      <div className="w-full max-w-[440px] flex flex-col items-center relative z-10 space-y-6">
+        
+        {/* Brand Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: EASE_OUT_EXPO }}
+          className="text-center space-y-3"
+        >
+          <Link href="/" className="inline-flex items-center gap-3 group">
+            <div className="bg-white px-3 py-2 rounded-xl border border-neutral-100 dark:border-white/10 shadow-md flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
+              <img src="/images/logo.png" alt="RIT Logo" className="h-6 w-auto object-contain" />
             </div>
-            <span className="text-[var(--surface-border)] font-normal text-lg">|</span>
-            <span className="font-display font-extrabold text-base tracking-tight block leading-none text-[var(--foreground)]">Contest Alert</span>
+            <span className="text-[var(--foreground-muted)]/40 font-normal">|</span>
+            <span className="font-display font-extrabold text-sm tracking-wider uppercase text-[var(--foreground-secondary)] group-hover:text-[var(--foreground)] transition-colors">
+              Contest Alert
+            </span>
           </Link>
         </motion.div>
 
-        {/* Card */}
-        <motion.div variants={fadeUp} className="card-bezel-elevated">
-          <div className="card-bezel-inner p-8 space-y-6">
+        {/* Liquid Glass Card Form */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, ease: EASE_OUT_EXPO, delay: 0.15 }}
+          className="w-full liquid-glass p-8 rounded-[2rem] border border-[var(--surface-border)] relative overflow-hidden"
+        >
+          {/* Top visual accent gradient */}
+          <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-[#76ABAE] to-[#FF5722] opacity-60" />
+          
+          <div className="space-y-6">
+            
+            {/* Header Text */}
             <div className="text-center space-y-2">
-              <h2 className="text-xl font-bold tracking-tight">
-                {isAdminMode ? "Admin Sign In" : "Welcome Back"}
+              <h2 className="font-display text-2xl font-extrabold tracking-tight text-[var(--foreground)]">
+                Sign In
               </h2>
-              <p className="text-sm text-[var(--foreground-muted)]">
-                {isAdminMode
-                  ? "Sign in with your admin credentials"
-                  : "Sign in with your college account to continue"}
+              <p className="text-xs text-[var(--foreground-secondary)] max-w-[300px] mx-auto leading-relaxed">
+                Connect your account to access contests, tickets, and rankings
               </p>
             </div>
 
+            {/* Error Message */}
             {error && (
-              <div className="px-4 py-3 rounded-xl bg-[var(--cta-muted)] text-[var(--cta)] text-sm font-medium border border-[var(--cta)]/20">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="px-4 py-3 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-300 text-xs font-semibold border border-rose-500/20 text-center"
+              >
                 {error}
-              </div>
+              </motion.div>
             )}
 
-            {!isAdminMode ? (
-              /* Student OAuth Buttons */
-              <div className="space-y-3">
-                <button
-                  onClick={() => handleOAuth("google")}
-                  disabled={loading}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] hover:bg-[var(--surface-subtle)] hover:border-[var(--surface-border-hover)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98] disabled:opacity-50"
-                >
-                  <GoogleLogo weight="bold" className="w-5 h-5 text-[#4285F4]" />
-                  <span className="text-sm font-medium flex-1 text-left">Continue with Google</span>
-                  <ArrowRight weight="bold" className="w-3.5 h-3.5 text-[var(--foreground-muted)]" />
-                </button>
+            {/* Google Login Option */}
+            <div className="space-y-4">
+              <button
+                onClick={handleGoogleOAuth}
+                disabled={loading}
+                className="login-oauth-btn disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden flex items-center justify-center py-4 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--surface-border)] rounded-xl text-sm font-semibold transition-all hover:bg-[var(--surface-subtle)] cursor-pointer"
+              >
+                <GoogleLogo weight="light" className="w-5 h-5 text-[var(--foreground-secondary)] group-hover:scale-110 transition-transform mr-2" />
+                <span>{loading ? "Connecting..." : "Continue with Google"}</span>
+                <ArrowRight weight="light" className="w-4 h-4 text-[var(--foreground-muted)] group-hover:translate-x-1 transition-transform ml-auto" />
+              </button>
 
-                <button
-                  onClick={() => handleOAuth("azure")}
-                  disabled={loading}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] hover:bg-[var(--surface-subtle)] hover:border-[var(--surface-border-hover)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98] disabled:opacity-50"
-                >
-                  <MicrosoftOutlookLogo weight="bold" className="w-5 h-5 text-[#00A4EF]" />
-                  <span className="text-sm font-medium flex-1 text-left">Continue with Microsoft</span>
-                  <ArrowRight weight="bold" className="w-3.5 h-3.5 text-[var(--foreground-muted)]" />
-                </button>
+              {/* Instructions regarding Official College Email ID */}
+              <div className="p-4 rounded-xl bg-[#76ABAE]/5 dark:bg-[#76ABAE]/10 border border-[#76ABAE]/15 dark:border-[#76ABAE]/20 flex gap-3 text-xs leading-relaxed text-[var(--foreground-secondary)] font-normal">
+                <Info weight="light" className="w-5 h-5 text-[#76ABAE] shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-[var(--foreground)] font-semibold">Important requirement: </strong>
+                  Please sign in using your official college email address (e.g., <span className="font-mono text-[#76ABAE] dark:text-[#76ABAE] font-bold">yourname@ritchennai.edu.in</span>) to authorize access.
+                </div>
               </div>
-            ) : (
-              /* Admin Email/Password Form */
-              <form onSubmit={handleAdminLogin} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-[var(--foreground-secondary)]">Email</label>
-                  <div className="relative">
-                    <EnvelopeSimple weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@ritchennai.edu.in"
-                      required
-                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] text-sm placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] transition-all duration-300"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-[var(--foreground-secondary)]">Password</label>
-                  <div className="relative">
-                    <Lock weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--foreground-muted)]" />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      required
-                      className="w-full pl-11 pr-12 py-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] text-sm placeholder:text-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] transition-all duration-300"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors"
-                    >
-                      {showPassword ? <EyeSlash weight="bold" className="w-4 h-4" /> : <Eye weight="bold" className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="group w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-[var(--cta)] text-white font-semibold text-sm transition-all duration-300 hover:shadow-[var(--shadow-cta-glow)] active:scale-[0.98] disabled:opacity-50"
-                >
-                  <span>{loading ? "Signing in..." : "Sign In"}</span>
-                  {!loading && <ArrowRight weight="bold" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform duration-300" />}
-                </button>
-              </form>
-            )}
-
-            {/* Divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-[var(--surface-border)]" />
-              <span className="text-[11px] text-[var(--foreground-muted)] font-medium uppercase tracking-wider">
-                {isAdminMode ? "or" : "Admin?"}
-              </span>
-              <div className="flex-1 h-px bg-[var(--surface-border)]" />
             </div>
 
-            {/* Toggle */}
-            <button
-              onClick={() => { setIsAdminMode(!isAdminMode); setError(null); }}
-              className="w-full text-center text-sm font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors duration-300"
-            >
-              {isAdminMode ? "Sign in as Student" : "Sign in as Administrator"}
-            </button>
-
-            {/* Mock Dev Bypass Buttons */}
-            <div className="space-y-2.5 pt-4 border-t border-[var(--surface-border)]">
-              <div className="text-[10px] text-center font-bold uppercase tracking-wider text-[var(--foreground-muted)]">
-                Local Testing Bypass
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    document.cookie = "rit-mock-user=student; path=/; max-age=86400";
-                    window.location.href = "/dashboard";
-                  }}
-                  className="flex-1 py-2.5 px-3 border border-[var(--surface-border)] bg-[var(--surface-subtle)] hover:bg-[var(--accent-muted)] hover:border-[var(--accent)]/30 rounded-xl text-xs font-semibold text-[var(--foreground-secondary)] hover:text-[var(--accent)] transition-all cursor-pointer"
-                >
-                  Test Student
-                </button>
-                <button
-                  onClick={() => {
-                    document.cookie = "rit-mock-user=admin; path=/; max-age=86400";
-                    window.location.href = "/admin";
-                  }}
-                  className="flex-1 py-2.5 px-3 border border-[var(--surface-border)] bg-[var(--surface-subtle)] hover:bg-[var(--cta-muted)] hover:border-[var(--cta)]/30 rounded-xl text-xs font-semibold text-[var(--foreground-secondary)] hover:text-[var(--cta)] transition-all cursor-pointer"
-                >
-                  Test Admin
-                </button>
-              </div>
-            </div>
           </div>
         </motion.div>
 
-        {/* Back to Home */}
-        <motion.div variants={fadeUp} className="text-center mt-6">
-          <Link href="/" className="text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors duration-300">
+        {/* Back to Home & Footer */}
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="text-center space-y-4"
+        >
+          <Link href="/" className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors duration-300 underline underline-offset-4">
             Back to Home
           </Link>
+          <p className="text-[10px] text-[var(--foreground-muted)]">
+            &copy; {new Date().getFullYear()} Rajalakshmi Institute of Technology. All rights reserved.
+          </p>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   );
 }

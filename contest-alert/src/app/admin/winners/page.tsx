@@ -2,13 +2,9 @@
 
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import {
-  Lightning, CalendarCheck, Ticket, Trophy, Bell, SignOut,
-  QrCode, ClipboardText, Users, House, Sun, Moon,
-  CheckCircle, ListChecks, Warning, User, Trash
-} from "@phosphor-icons/react";
-import { useTheme } from "@/components/shared/ThemeProvider";
+import { Trophy, ListChecks, Trash } from "@phosphor-icons/react";
+import { createClient } from "@/lib/supabase/client";
+import { Sidebar } from "@/components/shared/Sidebar";
 
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
 const fadeUp = {
@@ -28,55 +24,6 @@ interface WinnerRow {
   declaredAt: string;
 }
 
-const DEFAULT_WINNERS: WinnerRow[] = [
-  { id: "win-1", eventId: "1", eventTitle: "CodeStorm Hackathon 2026", studentName: "Sanjay Kumar", registerNo: "211621104035", department: "CSE", position: "winner", pointsAwarded: 50, declaredAt: "Jun 09, 2026" },
-  { id: "win-2", eventId: "1", eventTitle: "CodeStorm Hackathon 2026", studentName: "Preethi S.", registerNo: "211621203004", department: "AIML", position: "runner_up", pointsAwarded: 30, declaredAt: "Jun 09, 2026" }
-];
-
-const NAV_ITEMS = [
-  { label: "Admin Panel", icon: House, href: "/admin" },
-  { label: "Manage Events", icon: CalendarCheck, href: "/admin/events" },
-  { label: "QR Scanner", icon: QrCode, href: "/admin/scanner" },
-  { label: "Registrations", icon: ClipboardText, href: "/admin/registrations" },
-  { label: "Winner Board", icon: Trophy, href: "/admin/winners", active: true },
-  { label: "Student Mode", icon: Users, href: "/dashboard" },
-];
-
-function Sidebar() {
-  const { resolvedTheme, setTheme } = useTheme();
-  return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-[var(--surface)] border-r border-[var(--surface-border)] flex flex-col z-30 hidden lg:flex">
-      <div className="px-6 py-5 border-b border-[var(--surface-border)]">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="bg-white px-2 py-1 rounded-lg border border-neutral-100 shadow-sm flex items-center justify-center shrink-0">
-            <img src="/images/logo.png" alt="RIT Logo" className="h-6 w-auto object-contain" />
-          </div>
-          <span className="text-[var(--surface-border)] font-normal">|</span>
-          <span className="font-display font-extrabold text-[13px] tracking-tight block leading-none text-[var(--foreground)]">Admin Portal</span>
-        </Link>
-      </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <Link key={item.label} href={item.href}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-              item.active ? "bg-[var(--accent-muted)] text-[var(--accent-text)]" : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-            }`}>
-            <item.icon weight={item.active ? "duotone" : "regular"} className="w-[18px] h-[18px]" />
-            <span className="flex-1">{item.label}</span>
-          </Link>
-        ))}
-      </nav>
-      <div className="px-3 py-4 border-t border-[var(--surface-border)] space-y-1">
-        <button onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium text-[var(--foreground-secondary)] hover:bg-[var(--surface-subtle)] transition-all duration-300">
-          {resolvedTheme === "dark" ? <Sun weight="regular" className="w-[18px] h-[18px]" /> : <Moon weight="regular" className="w-[18px] h-[18px]" />}
-          <span>{resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-        </button>
-      </div>
-    </aside>
-  );
-}
-
 export default function WinnersPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [winners, setWinners] = useState<WinnerRow[]>([]);
@@ -89,80 +36,174 @@ export default function WinnersPage() {
   const [department, setDepartment] = useState("CSE");
   const [position, setPosition] = useState<"winner" | "runner_up" | "special_mention">("winner");
 
-  useEffect(() => {
-    // Sync published events
-    const storedEvents = localStorage.getItem("rit_events");
-    if (storedEvents) {
-      setEvents(JSON.parse(storedEvents));
-    }
+  const loadEventsAndWinners = async () => {
+    try {
+      const supabase = createClient();
+      // Load active events
+      const { data: activeEvents } = await supabase
+        .from("events")
+        .select("id, title, department")
+        .eq("status", "active");
+      if (activeEvents) {
+        setEvents(activeEvents);
+      }
 
-    // Sync winner declarations
-    const storedWinners = localStorage.getItem("rit_declared_winners");
-    if (storedWinners) {
-      setWinners(JSON.parse(storedWinners));
-    } else {
-      setWinners(DEFAULT_WINNERS);
-      localStorage.setItem("rit_declared_winners", JSON.stringify(DEFAULT_WINNERS));
+      // Load winners joined with events and profiles
+      const { data: dbWinners } = await supabase
+        .from("winners")
+        .select(`
+          id,
+          event_id,
+          position,
+          declared_at,
+          events(title),
+          profiles(name, register_number, department)
+        `)
+        .order("declared_at", { ascending: false });
+
+      if (dbWinners) {
+        const parsed: WinnerRow[] = dbWinners.map((w: any) => {
+          const pointsAwarded = w.position === "winner" ? 50 : w.position === "runner_up" ? 30 : 10;
+          return {
+            id: w.id,
+            eventId: w.event_id,
+            eventTitle: w.events?.title || "Unknown Event",
+            studentName: w.profiles?.name || "Student",
+            registerNo: w.profiles?.register_number || "N/A",
+            department: w.profiles?.department || "N/A",
+            position: w.position,
+            pointsAwarded,
+            declaredAt: w.declared_at ? new Date(w.declared_at).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) : "N/A"
+          };
+        });
+        setWinners(parsed);
+      }
+    } catch (err) {
+      console.error(err);
     }
+  };
+
+  useEffect(() => {
+    loadEventsAndWinners();
   }, []);
 
-  const handleDeclareWinner = (e: React.FormEvent) => {
+  const handleDeclareWinner = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEventId) return;
 
     setLoading(true);
 
-    const event = events.find(ev => ev.id === selectedEventId) || { title: "Custom Event" };
-    const pointsAwarded = position === "winner" ? 50 : position === "runner_up" ? 30 : 10;
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    setTimeout(() => {
-      const newWinner: WinnerRow = {
-        id: `win-${Math.random().toString()}`,
-        eventId: selectedEventId,
-        eventTitle: event.title,
-        studentName,
-        registerNo,
-        department,
-        position,
-        pointsAwarded,
-        declaredAt: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
-      };
+      // Find profile by registerNo
+      const { data: student, error: profileErr } = await supabase
+        .from("profiles")
+        .select("id, name, department, achievement_points")
+        .eq("register_number", registerNo.trim())
+        .maybeSingle();
 
-      const updated = [newWinner, ...winners];
-      setWinners(updated);
-      localStorage.setItem("rit_declared_winners", JSON.stringify(updated));
+      if (!student) {
+        alert("Student profile with this register number does not exist! Please check and try again.");
+        setLoading(false);
+        return;
+      }
 
-      // Trigger user achievements / notification alert trigger
-      const currentNotes = JSON.parse(localStorage.getItem("rit_notifications") || "[]");
-      currentNotes.unshift({
-        id: Math.random().toString(),
-        title: "Winner Declared!",
-        message: `${studentName} (${department}) secured ${position.replace("_", " ")} in ${event.title}, earning +${pointsAwarded} points!`,
-        type: "winner_declared",
-        date: "Just Now",
-        read: false
-      });
-      localStorage.setItem("rit_notifications", JSON.stringify(currentNotes));
+      // Insert winner
+      const { error: winnerErr } = await supabase
+        .from("winners")
+        .insert({
+          event_id: selectedEventId,
+          user_id: student.id,
+          position: position,
+          declared_by: user.id
+        });
+
+      if (winnerErr) {
+        throw winnerErr;
+      }
+
+      // Increment achievement points
+      const pointsAwarded = position === "winner" ? 50 : position === "runner_up" ? 30 : 10;
+      await supabase
+        .from("profiles")
+        .update({ achievement_points: (student.achievement_points || 0) + pointsAwarded })
+        .eq("id", student.id);
+
+      // Create notification
+      const event = events.find(ev => ev.id === selectedEventId) || { title: "Event" };
+      await supabase
+        .from("notifications")
+        .insert({
+          user_id: student.id,
+          title: "Winner Declared!",
+          message: `Congratulations! You secured ${position.replace("_", " ")} in ${event.title}, earning +${pointsAwarded} points!`,
+          type: "winner_declared",
+          related_event_id: selectedEventId
+        });
+
+      // Reload
+      await loadEventsAndWinners();
 
       // Reset form
       setSelectedEventId("");
       setStudentName("");
       setRegisterNo("");
       setPosition("winner");
+    } catch (err) {
+      console.error(err);
+      alert("Error declaring winner: " + (err as any).message);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
-  const removeWinner = (id: string) => {
+  const removeWinner = async (id: string) => {
     if (confirm("Are you sure you want to revoke this winner status? Points will be deducted.")) {
-      const updated = winners.filter(w => w.id !== id);
-      setWinners(updated);
-      localStorage.setItem("rit_declared_winners", JSON.stringify(updated));
+      try {
+        const supabase = createClient();
+        // Fetch winner details to deduct points
+        const { data: winnerData } = await supabase
+          .from("winners")
+          .select("user_id, position")
+          .eq("id", id)
+          .maybeSingle();
+
+        if (winnerData) {
+          const { error: deleteErr } = await supabase
+            .from("winners")
+            .delete()
+            .eq("id", id);
+
+          if (!deleteErr) {
+            // Deduct points
+            const pointsToDeduct = winnerData.position === "winner" ? 50 : winnerData.position === "runner_up" ? 30 : 10;
+            const { data: student } = await supabase
+              .from("profiles")
+              .select("achievement_points")
+              .eq("id", winnerData.user_id)
+              .maybeSingle();
+
+            if (student) {
+              await supabase
+                .from("profiles")
+                .update({ achievement_points: Math.max(0, (student.achievement_points || 0) - pointsToDeduct) })
+                .eq("id", winnerData.user_id);
+            }
+
+            setWinners(prev => prev.filter(w => w.id !== id));
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[var(--background)]">
+    <div className="min-h-[100dvh] bg-transparent">
       <Sidebar />
       <main className="lg:ml-[var(--sidebar-width)] min-h-[100dvh] pb-16">
         
@@ -183,7 +224,9 @@ export default function WinnersPage() {
             <div className="lg:col-span-5">
               <motion.div variants={fadeUp} initial="hidden" animate="visible" className="card-bezel">
                 <form onSubmit={handleDeclareWinner} className="card-bezel-inner p-5 space-y-4">
-                  <h3 className="text-sm font-semibold flex items-center gap-1.5 border-b border-[var(--surface-border)] pb-2.5"><Trophy weight="fill" className="text-[var(--accent)]" /> Declare Event Winner</h3>
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5 border-b border-[var(--surface-border)] pb-2.5">
+                    <Trophy weight="light" className="text-[var(--accent)] w-5 h-5" /> Declare Event Winner
+                  </h3>
                   
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-[var(--foreground-secondary)]">Select Event</label>
@@ -256,11 +299,12 @@ export default function WinnersPage() {
             <div className="lg:col-span-7">
               <div className="card-bezel">
                 <div className="card-bezel-inner">
-                  <div className="px-6 py-4 border-b border-[var(--surface-border)]">
-                    <h3 className="text-sm font-semibold flex items-center gap-1.5"><ListChecks /> Declared Winners History</h3>
+                  <div className="px-6 py-4 border-b border-[var(--surface-border)] flex items-center gap-2">
+                    <ListChecks weight="light" className="w-5 h-5 text-[var(--foreground)]" />
+                    <h3 className="text-sm font-semibold">Declared Winners History</h3>
                   </div>
 
-                  <div className="divide-y divide-[var(--surface-border)] max-h-96 overflow-y-auto">
+                  <div className="divide-y divide-[var(--surface-border)] max-h-[30rem] overflow-y-auto">
                     {winners.length > 0 ? (
                       winners.map((w) => (
                         <div key={w.id} className="flex items-center justify-between px-6 py-4 hover:bg-[var(--surface-subtle)] transition-colors">
@@ -284,10 +328,10 @@ export default function WinnersPage() {
                             
                             <button 
                               onClick={() => removeWinner(w.id)}
-                              className="p-1.5 border border-[var(--surface-border)] rounded-lg text-slate-400 hover:text-[var(--cta)] hover:border-[var(--cta)]/20 transition-colors"
+                              className="p-1.5 border border-[var(--surface-border)] rounded-lg text-slate-400 hover:text-[var(--cta)] hover:border-[var(--cta)]/20 transition-colors animate-press"
                               title="Revoke Winner"
                             >
-                              <Trash weight="bold" className="w-3.5 h-3.5" />
+                              <Trash weight="light" className="w-4 h-4" />
                             </button>
                           </div>
 

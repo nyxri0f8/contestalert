@@ -1,16 +1,19 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  Ticket, CalendarBlank, MapPin, DownloadSimple, Lightning,
-  House, Trophy, Medal, Bell, Sun, Moon, SignOut, Info,
-  CheckCircle, ArrowRight
+  Ticket,
+  CalendarBlank,
+  MapPin,
+  DownloadSimple,
+  ArrowRight,
 } from "@phosphor-icons/react";
-import { useTheme } from "@/components/shared/ThemeProvider";
 import QRCode from "qrcode";
 import { jsPDF } from "jspdf";
+import { createClient } from "@/lib/supabase/client";
+import { Sidebar } from "@/components/shared/Sidebar";
 
 const EASE_OUT_EXPO = [0.32, 0.72, 0, 1] as const;
 const fadeUp = {
@@ -28,98 +31,65 @@ interface TicketType {
   registeredAt: string;
 }
 
-const DEFAULT_TICKETS: TicketType[] = [
-  {
-    id: "EVT-2026-784912",
-    eventId: "1",
-    title: "CodeStorm Hackathon 2026",
-    date: "Jun 28, 2026",
-    venue: "Main Auditorium",
-    teamName: "CyberKnights",
-    registeredAt: "Jun 09, 2026"
-  },
-  {
-    id: "EVT-2026-104928",
-    eventId: "2",
-    title: "AI Workshop: Transformers",
-    date: "Jul 05, 2026",
-    venue: "Lab Block C-301",
-    teamName: null,
-    registeredAt: "Jun 09, 2026"
-  }
-];
-
-const NAV_ITEMS = [
-  { label: "Dashboard", icon: House, href: "/dashboard" },
-  { label: "Events", icon: CalendarBlank, href: "/events" },
-  { label: "My Tickets", icon: Ticket, href: "/tickets", active: true },
-  { label: "Leaderboard", icon: Trophy, href: "/leaderboard" },
-  { label: "Achievements", icon: Medal, href: "/achievements" },
-  { label: "Notifications", icon: Bell, href: "/notifications", badge: 3 },
-];
-
-function Sidebar() {
-  const { resolvedTheme, setTheme } = useTheme();
-  return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[var(--sidebar-width)] bg-[var(--surface)] border-r border-[var(--surface-border)] flex flex-col z-30 hidden lg:flex">
-      <div className="px-6 py-5 border-b border-[var(--surface-border)]">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="bg-white px-2 py-1 rounded-lg border border-neutral-100 shadow-sm flex items-center justify-center shrink-0">
-            <img src="/images/logo.png" alt="RIT Logo" className="h-6 w-auto object-contain" />
-          </div>
-          <span className="text-[var(--surface-border)] font-normal">|</span>
-          <span className="font-display font-extrabold text-[13px] tracking-tight block leading-none text-[var(--foreground)]">Contest Alert</span>
-        </Link>
-      </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <Link key={item.label} href={item.href}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-              item.active ? "bg-[var(--accent-muted)] text-[var(--accent-text)]" : "text-[var(--foreground-secondary)] hover:text-[var(--foreground)] hover:bg-[var(--surface-subtle)]"
-            }`}>
-            <item.icon weight={item.active ? "duotone" : "regular"} className="w-[18px] h-[18px]" />
-            <span className="flex-1">{item.label}</span>
-            {item.badge && <span className="w-5 h-5 rounded-full bg-[var(--cta)] text-white text-[10px] font-bold flex items-center justify-center">{item.badge}</span>}
-          </Link>
-        ))}
-      </nav>
-      <div className="px-3 py-4 border-t border-[var(--surface-border)] space-y-1">
-        <button onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[13px] font-medium text-[var(--foreground-secondary)] hover:bg-[var(--surface-subtle)] transition-all duration-300">
-          {resolvedTheme === "dark" ? <Sun weight="regular" className="w-[18px] h-[18px]" /> : <Moon weight="regular" className="w-[18px] h-[18px]" />}
-          <span>{resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
-        </button>
-      </div>
-    </aside>
-  );
-}
-
 export default function TicketsPage() {
   const [tickets, setTickets] = useState<TicketType[]>([]);
   const [qrUrls, setQrUrls] = useState<Record<string, string>>({});
   const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
-    // Sync tickets from localStorage, fallback to DEFAULT_TICKETS
-    const storedTickets = localStorage.getItem("rit_tickets");
-    let currentTickets: TicketType[] = [];
-    if (storedTickets) {
-      currentTickets = JSON.parse(storedTickets);
-    } else {
-      currentTickets = DEFAULT_TICKETS;
-      localStorage.setItem("rit_tickets", JSON.stringify(DEFAULT_TICKETS));
-    }
-    setTickets(currentTickets);
-
-    // Generate QR Code URLs for all tickets
-    currentTickets.forEach(async (t) => {
+    async function loadTickets() {
       try {
-        const url = await QRCode.toDataURL(t.id, { margin: 1, width: 250 });
-        setQrUrls(prev => ({ ...prev, [t.id]: url }));
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: regs, error } = await supabase
+          .from("registrations")
+          .select(`
+            id,
+            ticket_id,
+            team_name,
+            registered_at,
+            events (
+              id,
+              title,
+              event_date,
+              venue
+            )
+          `)
+          .eq("user_id", user.id);
+
+        if (regs) {
+          const parsed = regs.map((r: any) => {
+            const ev = r.events;
+            return {
+              id: r.ticket_id,
+              eventId: ev?.id || "",
+              title: ev?.title || "Unknown Event",
+              date: ev?.event_date ? new Date(ev.event_date).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) : "N/A",
+              venue: ev?.venue || "Main Campus",
+              teamName: r.team_name,
+              registeredAt: r.registered_at ? new Date(r.registered_at).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) : "N/A"
+            };
+          });
+
+          setTickets(parsed);
+
+          // Generate QR Code URLs for all tickets
+          parsed.forEach(async (t) => {
+            try {
+              const url = await QRCode.toDataURL(t.id, { margin: 1, width: 250 });
+              setQrUrls(prev => ({ ...prev, [t.id]: url }));
+            } catch (err) {
+              console.error("Failed to generate QR Code", err);
+            }
+          });
+        }
       } catch (err) {
-        console.error("Failed to generate QR Code", err);
+        console.error("Failed to load tickets", err);
       }
-    });
+    }
+    loadTickets();
   }, []);
 
   const downloadPDF = async (ticket: TicketType) => {
@@ -206,7 +176,7 @@ export default function TicketsPage() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[var(--background)]">
+    <div className="min-h-[100dvh] bg-transparent">
       <Sidebar />
       <main className="lg:ml-[var(--sidebar-width)] min-h-[100dvh] pb-12">
         
@@ -230,7 +200,7 @@ export default function TicketsPage() {
                 transition={{ delay: idx * 0.05 }}
                 className="card-bezel overflow-hidden group"
               >
-                <div className="card-bezel-inner flex flex-col md:flex-row bg-[var(--surface-subtle)] hover:bg-[var(--surface-subtle)]/80 transition-colors duration-200">
+                <div className="card-bezel-inner flex flex-col md:flex-row bg-[var(--surface-subtle)]/75 hover:bg-[var(--surface-subtle)]/60 transition-colors duration-200">
                   
                   {/* Left Column: Ticket Info */}
                   <div className="flex-1 p-6 sm:p-8 space-y-6 border-b md:border-b-0 md:border-r border-dashed border-[var(--surface-border)] relative">
@@ -263,7 +233,7 @@ export default function TicketsPage() {
                           Date & Time
                         </span>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <CalendarBlank className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                          <CalendarBlank weight="light" className="w-4 h-4 text-[var(--accent)] shrink-0" />
                           <span className="text-xs font-semibold text-[var(--foreground-secondary)]">
                             {t.date}
                           </span>
@@ -275,7 +245,7 @@ export default function TicketsPage() {
                           Venue
                         </span>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <MapPin className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                          <MapPin weight="light" className="w-4 h-4 text-[var(--accent)] shrink-0" />
                           <span className="text-xs font-semibold text-[var(--foreground-secondary)] truncate max-w-[120px]">
                             {t.venue}
                           </span>
@@ -314,7 +284,7 @@ export default function TicketsPage() {
                       disabled={downloading === t.id}
                       className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-all shadow-[var(--shadow-accent-glow)] text-black"
                     >
-                      <DownloadSimple weight="bold" className="w-4 h-4" />
+                      <DownloadSimple weight="light" className="w-4 h-4" />
                       {downloading === t.id ? "Downloading..." : "Download PDF"}
                     </button>
                   </div>
@@ -325,13 +295,13 @@ export default function TicketsPage() {
           ) : (
             <div className="text-center py-20 card-bezel">
               <div className="card-bezel-inner p-10 space-y-4">
-                <Ticket weight="duotone" className="w-12 h-12 text-[var(--foreground-muted)] mx-auto" />
+                <Ticket weight="light" className="w-12 h-12 text-[var(--foreground-muted)] mx-auto" />
                 <h2 className="text-base font-bold">No tickets generated yet</h2>
                 <p className="text-xs text-[var(--foreground-muted)] max-w-sm mx-auto">
                   Browse events and register to receive your entry tickets and earn department leaderboard points.
                 </p>
                 <Link href="/events" className="inline-flex items-center gap-1.5 px-4 py-2 bg-[var(--cta)] hover:bg-[var(--cta-hover)] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-[var(--shadow-cta-glow)]">
-                  Explore Events <ArrowRight weight="bold" className="w-3.5 h-3.5" />
+                  Explore Events <ArrowRight weight="light" className="w-3.5 h-3.5" />
                 </Link>
               </div>
             </div>
